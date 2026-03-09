@@ -1,64 +1,83 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Ce fichier fournit des indications à Claude Code lors du travail sur ce dépôt.
 
-## Commands
+## Commandes
 
 ```bash
-# Activate virtual environment
+# Activer l'environnement virtuel
 source .venv/bin/activate
 
-# Run a scan (basic usage)
-python main.py --target 127.0.0.1 --ports 20-1024
+# Installer les dépendances
+pip install -r requirements.txt
 
-# Run a scan with specific ports and JSON output
-python main.py --target 192.168.1.1 --ports 22,80,443 --output results.json
+# Lancer l'interface interactive (recommandé)
+python cli.py
 
-# Run with custom timeout and CSV output
-python main.py --target example.com --ports 1-1024 --timeout 0.5 --output results.csv
+# Lancer l'interface interactive en mode SYN scan (nécessite sudo + scapy)
+sudo /chemin/absolu/.venv/bin/python cli.py
 
-# Run with threading, HTML output
-python main.py --target 192.168.1.1 --ports 20-1024 --threads 100 --output scan.html
-
-# Run SYN scan with host discovery (requires scapy + sudo)
+# Lancer un scan directement en ligne de commande
+python main.py --target 127.0.0.1 --ports 22,80,443
+python main.py --target 192.168.1.1 --ports 1-1024 --threads 200 --output scan.html
 python main.py --target 192.168.1.0/24 --discover --ports 22,80 --scan-type syn
-
-# Run with banner grabbing
 python main.py --target 127.0.0.1 --ports 22,80,443 --banner --output results.json
 
-# Quick single-port check (runs scanner module directly)
+# Vérification rapide d'un port
 python scanner.py
 
-# Run tests
+# Lancer les tests
 python -m pytest tests/ -v
 ```
 
 ## Architecture
 
-The project is split into multiple modules:
+Le projet est organisé en plusieurs modules :
 
-- **`scanner.py`** — core TCP scanning library. Exposes:
+- **`cli.py`** — interface interactive simplifiée pour non-experts. Propose des profils prédéfinis (rapide / standard / complet / personnalisé), une vitesse simplifiée (Rapide / Normal / Lent) et auto-détecte le type de scan selon les droits root.
+- **`main.py`** — point d'entrée CLI complet via `argparse`. Supporte `--threads`, `--scan-type`, `--banner`, `--discover`, `--delay`, `--log-level`. Résultats au format `dict[port] = {"status", "service", "banner"}`.
+- **`scanner.py`** — bibliothèque de scan TCP. Expose :
   - `scan_port_connect(ip, port, timeout)` → `"open"` | `"closed"` | `"filtered"`
-  - `scan_port_syn(ip, port, timeout)` → `"open"` | `"closed"` | `"filtered"` (requires scapy + sudo)
-  - `scan_range(ip, start_port, end_port, timeout)` → `dict[port, status]`
-  - `scan_range_threaded(ip, ports, scan_fn, timeout, delay, max_workers)` → `dict[port, status]`
-  - `get_service_name(port)` → service name string
-  - `grab_banner(ip, port, timeout)` → banner string
-  - `SCAPY_AVAILABLE` — bool flag indicating whether scapy is installed
-- **`output.py`** — export functions. Writes results to `.txt`, `.json`, `.csv`, or `.html` via `write_output(results, path, target, scan_type)`.
-- **`discovery.py`** — host discovery. `discover_hosts(target, timeout)` probes a CIDR subnet using ARP (via scapy) or ICMP ping fallback; returns list of active IP strings.
-- **`main.py`** — full-featured CLI entry point. Parses args via `argparse`, supports threading (`--threads`), SYN scan (`--scan-type syn`), banner grabbing (`--banner`), host discovery (`--discover`), rate limiting (`--delay`), and structured logging (`--log-level`).
+  - `scan_port_syn(ip, port, timeout)` → `"open"` | `"closed"` | `"filtered"` (nécessite scapy + sudo)
+  - `scan_range(ip, start_port, end_port, timeout)` → `dict[port, statut]`
+  - `scan_range_threaded(ip, ports, scan_fn, timeout, delay, max_workers)` → `dict[port, statut]`
+  - `get_service_name(port)` → nom du service
+  - `grab_banner(ip, port, timeout)` → bannière du service
+  - `SCAPY_AVAILABLE` — booléen indiquant si scapy est installé
+- **`output.py`** — fonctions d'export. `write_output(results, path, target, scan_type)` écrit en `.txt`, `.json`, `.csv` ou `.html`.
+- **`discovery.py`** — découverte d'hôtes. `discover_hosts(network, timeout)` sonde un sous-réseau CIDR via ARP (scapy) ou ping ICMP en repli ; retourne une liste d'IPs actives.
 
-Port spec parsing (`parse_ports`) in `main.py` supports ranges (`20-25`), single ports (`22`), comma lists (`22,80,443`), and combinations (`22,80-85`).
+## Profils CLI (`cli.py`)
 
-Optional dependencies (install via `pip install -r requirements.txt`):
-- `tqdm` — progress bar during enrichment
-- `scapy` — required for SYN scan and ARP host discovery (also requires root/sudo)
+| Profil | Ports | Usage |
+|--------|-------|-------|
+| Scan rapide | 22,80,443,3389,8080 | Vérification rapide des services courants |
+| Scan standard | 1–1024 | Audit réseau général |
+| Scan complet | 1–65535 | Analyse exhaustive (lent) |
+| Personnalisé | au choix | Ports spécifiques |
 
-## Scan Behavior
+## Vitesses CLI (`cli.py`)
 
-- **open**: full TCP 3-way handshake succeeded
-- **closed**: RST received (`ECONNREFUSED`)
-- **filtered**: timeout or unreachable (no response)
+| Vitesse | Threads | Timeout | Délai |
+|---------|---------|---------|-------|
+| Rapide (LAN) | 400 | 0.3 s | 0 |
+| Normal | 100 | 1.0 s | 0 |
+| Lent (discret) | 20 | 2.0 s | 0.1 s |
 
-Scans are parallelised via `ThreadPoolExecutor`. The default timeout is 1.0 second per port and the default thread count is 100.
+## Comportement du scan
+
+- **open** : poignée de main TCP réussie
+- **closed** : connexion refusée (RST reçu)
+- **filtered** : délai expiré ou hôte inaccessible
+
+Les scans sont parallélisés via `ThreadPoolExecutor`.
+
+## Dépendances optionnelles
+
+```bash
+pip install -r requirements.txt
+```
+
+- `tqdm` — barre de progression
+- `scapy` — SYN scan et découverte ARP (nécessite également sudo)
+- `pytest` — exécution des tests
