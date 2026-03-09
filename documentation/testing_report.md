@@ -2,14 +2,15 @@
 
 ## Tests automatisés
 
-Le projet dispose de 19 tests unitaires organisés en 4 fichiers :
+Le projet dispose de 48 tests unitaires organisés en 5 fichiers :
 
 ```
 tests/
-├── test_scanner.py    (7 tests)
-├── test_output.py     (5 tests)
-├── test_discovery.py  (3 tests)
-└── test_main.py       (4 tests)
+├── test_scanner.py       (7 tests)
+├── test_output.py        (5 tests)
+├── test_discovery.py     (3 tests)
+├── test_main.py          (4 tests)
+└── test_sanitisation.py  (29 tests)
 ```
 
 Lancer les tests :
@@ -17,7 +18,7 @@ Lancer les tests :
 python -m pytest tests/ -v
 ```
 
-Résultat attendu : **19 passed**
+Résultat attendu : **48 passed**
 
 ---
 
@@ -61,6 +62,23 @@ Résultat attendu : **19 passed**
 | `test_cli_json_output` | Port 80 "open" → JSON avec `data["80"]["status"] == "open"` |
 | `test_cli_syn_no_scapy` | SYN scan sans scapy → avertissement affiché, pas de crash |
 | `test_cli_threads_option` | `--threads 50` → `scan_range_threaded` appelé avec `max_workers=50` |
+
+### `test_sanitisation.py`
+
+| Test | Description |
+|------|-------------|
+| `test_valider_port_valide` | Ports 1, 80, 65535 acceptés |
+| `test_valider_port_zero` | Port 0 → `ValueError` |
+| `test_valider_port_trop_grand` | Port 65536 → `ValueError` |
+| `test_valider_port_negatif` | Port -1 → `ValueError` |
+| `test_valider_cible_ip` | IP simple acceptée |
+| `test_valider_cible_cidr` | CIDR accepté |
+| `test_valider_cible_hostname` | Hostname valide accepté |
+| `test_valider_cible_vide` | Chaîne vide → `ValueError` |
+| `test_valider_cible_caracteres_interdits` | Injection dans la cible → `ValueError` |
+| `test_valider_cible_trop_long` | Hostname > 253 chars → `ValueError` |
+| `test_valider_fichier_sortie_*` | Extensions valides/invalides, traversal relatif bloqué, chemin absolu autorisé |
+| `test_parse_ports_*` | Port simple, plage, liste, combinaison, déduplication, plage inversée, invalides |
 
 ---
 
