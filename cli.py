@@ -126,12 +126,6 @@ def main() -> int:
         ],
         defaut_idx=0,
     )
-    ext_map = {0: ".html", 1: ".txt", 2: ".csv", 3: ".json"}
-    ext = ext_map[list(VITESSES.keys()).index(vitesse_choisie) if False else
-                  ["html", "txt", "csv", "json"].index(
-                      format_choisi.split()[2].lstrip(".")
-                  )]
-    # déduction de l'extension depuis le choix
     if "HTML" in format_choisi:
         ext = ".html"
     elif ".txt" in format_choisi:
