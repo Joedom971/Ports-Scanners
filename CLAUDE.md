@@ -4,6 +4,43 @@ Ce fichier fournit des indications à Claude Code lors du travail sur ce dépôt
 
 ## Démarrage
 
+### Depuis VS Code (terminal intégré)
+
+Ouvrir le dossier `Port_scanner_Reseau` dans VS Code, puis dans le terminal intégré (`Ctrl+`` ` `` ou `Terminal → New Terminal`) :
+
+```bash
+# Activer l'environnement virtuel
+source .venv/bin/activate
+
+# Lancer le CLI interactif
+python cli.py
+
+# Ou directement en ligne de commande
+python main.py --target 127.0.0.1 --ports 22,80,443
+```
+
+### Depuis l'exécutable (sans Python ni venv)
+
+Les exécutables compilés sont dans `dist/` — aucune installation requise :
+
+```bash
+# CLI interactif
+./dist/port-scan-cli
+
+# CLI complet
+./dist/port-scan --target 127.0.0.1 --ports 22,80,443
+```
+
+Pour les lancer depuis n'importe où sur le Mac :
+```bash
+sudo cp dist/port-scan dist/port-scan-cli /usr/local/bin/
+# Puis depuis n'importe quel dossier :
+port-scan-cli
+port-scan --target 127.0.0.1 --ports 80
+```
+
+> Les résultats sont sauvegardés dans le **dossier depuis lequel la commande est lancée**, sauf si `--output` spécifie un chemin complet.
+
 ### Mode TCP connect (sans privilèges)
 
 Scan standard, aucun droit particulier requis.
