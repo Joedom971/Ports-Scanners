@@ -1,15 +1,15 @@
-"""Basic TCP port scanner.
+"""Scanner de ports TCP basique.
 
-This module provides a simple connect-style port scanner using Python sockets.
+Ce module fournit un scanner de ports en mode connect via les sockets Python.
 
-Functions:
-  - scan_port_connect(ip, port) -> status
-  - scan_range(ip, start_port, end_port) -> dict[port] = status
+Fonctions :
+  - scan_port_connect(ip, port) -> statut
+  - scan_range(ip, start_port, end_port) -> dict[port] = statut
 
-Status values:
-  - "open"
-  - "closed"
-  - "filtered"
+Valeurs de statut :
+  - "open"     (ouvert)
+  - "closed"   (fermé)
+  - "filtered" (filtré)
 
 """
 
@@ -28,17 +28,17 @@ except ImportError:
 
 
 def scan_port_connect(ip: str, port: int, timeout: float = 1.0) -> str:
-    """Scan a single TCP port using a connect().
+    """Scanne un seul port TCP via connect().
 
     Args:
-        ip: target IPv4/IPv6 address or hostname.
-        port: TCP port number (1-65535).
-        timeout: socket timeout in seconds.
+        ip: adresse IPv4/IPv6 ou nom d'hôte cible.
+        port: numéro de port TCP (1-65535).
+        timeout: délai d'expiration du socket en secondes.
 
     Returns:
-        "open" if connection succeeded.
-        "closed" if connection was refused.
-        "filtered" if timed out or inaccessible.
+        "open"     si la connexion a réussi.
+        "closed"   si la connexion a été refusée.
+        "filtered" si le délai a expiré ou l'hôte est inaccessible.
     """
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
@@ -58,16 +58,16 @@ def scan_port_connect(ip: str, port: int, timeout: float = 1.0) -> str:
 
 
 def scan_range(ip: str, start_port: int, end_port: int, timeout: float = 1.0) -> Dict[int, str]:
-    """Scan a range of TCP ports.
+    """Scanne une plage de ports TCP.
 
     Args:
-        ip: target IPv4/IPv6 address or hostname.
-        start_port: first port (inclusive).
-        end_port: last port (inclusive).
-        timeout: per-port socket timeout.
+        ip: adresse IPv4/IPv6 ou nom d'hôte cible.
+        start_port: premier port (inclus).
+        end_port: dernier port (inclus).
+        timeout: délai d'expiration par port.
 
     Returns:
-        Dict mapping port -> status.
+        Dictionnaire port -> statut.
     """
 
     results: Dict[int, str] = {}
@@ -161,5 +161,5 @@ def scan_port_syn(ip: str, port: int, timeout: float = 1.0) -> str:
 
 
 if __name__ == "__main__":
-    # Quick sanity check
+    # Vérification rapide
     print(scan_port_connect("127.0.0.1", 80))
