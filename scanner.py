@@ -118,11 +118,15 @@ def scan_range_threaded(
             time.sleep(delay)
         return port, scan_fn(ip, port, timeout=timeout)
 
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = {executor.submit(_scan, p): p for p in ports}
-        for future in as_completed(futures):
-            port, status = future.result()
-            results[port] = status
+    try:
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {executor.submit(_scan, p): p for p in ports}
+            for future in as_completed(futures):
+                port, status = future.result()
+                results[port] = status
+    except KeyboardInterrupt:
+        executor.shutdown(wait=False, cancel_futures=True)
+        raise
 
     return results
 
