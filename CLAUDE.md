@@ -2,6 +2,36 @@
 
 Ce fichier fournit des indications à Claude Code lors du travail sur ce dépôt.
 
+## Démarrage
+
+### Mode TCP connect (sans privilèges)
+
+Scan standard, aucun droit particulier requis.
+
+```bash
+cd /Users/johan-emmanuelhatchi/BXL-Kamkar-5/Port_scanner_Reseau
+source .venv/bin/activate
+python cli.py
+```
+
+Le CLI affiche : `Mode : TCP connect (standard)`
+
+### Mode SYN scan (raw packets, nécessite sudo)
+
+Plus discret, envoie des paquets bruts sans établir de connexion complète.
+Nécessite `sudo` et `scapy` installé.
+
+```bash
+cd /Users/johan-emmanuelhatchi/BXL-Kamkar-5/Port_scanner_Reseau
+sudo /Users/johan-emmanuelhatchi/BXL-Kamkar-5/Port_scanner_Reseau/.venv/bin/python cli.py
+```
+
+Le CLI affiche : `Mode : SYN scan (avancé, root détecté)`
+
+> Le mode est **auto-détecté** selon les droits root — aucun choix à faire dans le CLI.
+
+---
+
 ## Commandes
 
 ```bash
@@ -10,12 +40,6 @@ source .venv/bin/activate
 
 # Installer les dépendances
 pip install -r requirements.txt
-
-# Lancer l'interface interactive (recommandé)
-python cli.py
-
-# Lancer l'interface interactive en mode SYN scan (nécessite sudo + scapy)
-sudo /chemin/absolu/.venv/bin/python cli.py
 
 # Lancer un scan directement en ligne de commande
 python main.py --target 127.0.0.1 --ports 22,80,443
