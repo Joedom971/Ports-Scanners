@@ -24,6 +24,7 @@ from typing import Dict, List, Optional
 from scanner import (
     grab_banner,
     get_service_name,
+    resoudre_cible,
     scan_port_connect,
     scan_port_syn,
     scan_range_threaded,
@@ -131,6 +132,12 @@ def main(args: Optional[List[str]] = None) -> int:
                         help="Activer le banner grabbing (ports ouverts uniquement)")
     parser.add_argument("--log-level", choices=["DEBUG", "INFO", "WARNING"], default="INFO",
                         help="Niveau de log (défaut: INFO)")
+    parser.add_argument("--randomize", action="store_true",
+                        help="Randomiser l'ordre des ports pour réduire la détection")
+    parser.add_argument("--max-rate", type=float, default=0.0,
+                        help="Débit max en paquets/seconde (0 = illimité)")
+    parser.add_argument("--jitter", type=float, default=0.0,
+                        help="Variation aléatoire du délai en secondes (0 = désactivé)")
 
     parsed = parser.parse_args(args=args)
 
@@ -146,6 +153,15 @@ def main(args: Optional[List[str]] = None) -> int:
     if parsed.delay < 0:
         print("Erreur : --delay doit être >= 0.")
         return 1
+    if parsed.max_rate < 0:
+        print("Erreur : --max-rate doit être >= 0.")
+        return 1
+    if parsed.jitter < 0:
+        print("Erreur : --jitter doit être >= 0.")
+        return 1
+    if parsed.max_rate > 0 and parsed.threads > 1:
+        print(f"Note : --max-rate sérialise les envois — --threads {parsed.threads} n'a pas d'effet. "
+              f"Les paquets seront envoyés à {parsed.max_rate} pkt/s.")
 
     # Sanitisation des entrées
     try:
@@ -170,6 +186,22 @@ def main(args: Optional[List[str]] = None) -> int:
     else:
         scan_fn = scan_port_connect
 
+    # Résolution DNS unique (évite N résolutions pour N ports)
+    # Les CIDR (ex. 192.168.1.0/24) sont traités par discover_hosts — pas de résolution ici.
+    import ipaddress as _ipaddress
+    _is_cidr = False
+    try:
+        _ipaddress.ip_network(target_sanitise, strict=False)
+        _is_cidr = "/" in target_sanitise
+    except ValueError:
+        pass
+    if not _is_cidr:
+        try:
+            target_sanitise = resoudre_cible(target_sanitise)
+        except OSError as e:
+            print(f"Erreur : impossible de résoudre '{target_sanitise}' — {e}")
+            return 1
+
     # Host discovery
     if parsed.discover:
         from discovery import discover_hosts
@@ -192,6 +224,9 @@ def main(args: Optional[List[str]] = None) -> int:
             timeout=parsed.timeout,
             delay=parsed.delay,
             max_workers=parsed.threads,
+            randomize=parsed.randomize,
+            max_rate=parsed.max_rate,
+            jitter=parsed.jitter,
         )
 
         # Enrichir avec service name et banner

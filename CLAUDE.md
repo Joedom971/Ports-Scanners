@@ -84,11 +84,14 @@ Le projet est organisé en plusieurs modules :
 
 ## Vitesses CLI (`cli.py`)
 
-| Vitesse | Threads | Timeout | Délai |
-|---------|---------|---------|-------|
-| Rapide (LAN) | 400 | 0.3 s | 0 |
-| Normal | 100 | 1.0 s | 0 |
-| Lent (discret) | 20 | 2.0 s | 0.1 s |
+| Vitesse | Threads | Timeout | Délai | max-rate | Randomize |
+|---------|---------|---------|-------|----------|-----------|
+| Rapide (LAN) | 400 | 0.3 s | 0 | — | non |
+| Normal | 100 | 1.0 s | 0 | — | non |
+| Lent (discret) | 20 | 2.0 s | 0.1 s | — | non |
+| Furtif (anti-détection) | 5 | 3.0 s | 0 | 2 pkt/s | oui |
+
+> **Note :** avec `--max-rate`, les envois sont sérialisés par un verrou global — `--threads` n'a pas d'effet sur le débit réseau dans ce mode.
 
 ## Comportement du scan
 
