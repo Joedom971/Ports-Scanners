@@ -18,7 +18,10 @@ Valeurs de statut :
 """
 
 import errno
+import ipaddress
+import random
 import socket
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import time
 from typing import Callable, Dict, List
@@ -80,6 +83,19 @@ def scan_range(ip: str, start_port: int, end_port: int, timeout: float = 1.0) ->
     return results
 
 
+def resoudre_cible(cible: str) -> str:
+    """Résout un hostname en adresse IP une seule fois.
+
+    Si la cible est déjà une IP, la retourne telle quelle.
+    Lève socket.gaierror si la résolution échoue.
+    """
+    try:
+        ipaddress.ip_address(cible)
+        return cible  # déjà une IP
+    except ValueError:
+        return socket.gethostbyname(cible)
+
+
 def get_service_name(port: int) -> str:
     """Retourne le nom du service associé au port, ou 'unknown'."""
     try:
@@ -113,13 +129,41 @@ def scan_range_threaded(
     timeout: float = 1.0,
     delay: float = 0.0,
     max_workers: int = 100,
+    randomize: bool = False,
+    max_rate: float = 0.0,
+    jitter: float = 0.0,
 ) -> Dict[int, str]:
-    """Scanne une liste de ports en parallèle via ThreadPoolExecutor."""
+    """Scanne une liste de ports en parallèle via ThreadPoolExecutor.
+
+    Args:
+        max_rate: nombre maximal de paquets par seconde (0 = illimité).
+                  Quand max_rate > 0, il remplace delay : un verrou global
+                  sérialise les envois pour respecter l'intervalle minimum
+                  entre deux paquets (true rate limiting).
+        jitter: variation aléatoire ajoutée au délai (en secondes).
+                Le délai réel est random.uniform(delay, delay + jitter).
+                Ignoré si max_rate > 0.
+    """
     results: Dict[int, str] = {}
 
+    if randomize:
+        ports = list(ports)
+        random.shuffle(ports)
+
+    rate_lock = threading.Lock()
+    last_send: List[float] = [0.0]  # liste mutable pour accès depuis closure
+
     def _scan(port: int) -> tuple:
-        if delay > 0:
-            time.sleep(delay)
+        if max_rate > 0:
+            interval = 1.0 / max_rate
+            with rate_lock:
+                now = time.time()
+                wait = interval - (now - last_send[0])
+                if wait > 0:
+                    time.sleep(wait)
+                last_send[0] = time.time()
+        elif delay > 0 or jitter > 0:
+            time.sleep(random.uniform(delay, delay + jitter))
         return port, scan_fn(ip, port, timeout=timeout)
 
     try:

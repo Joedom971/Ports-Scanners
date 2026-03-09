@@ -11,9 +11,10 @@ import os
 
 # ── Vitesse → paramètres techniques ───────────────────────────────────────────
 VITESSES = {
-    "Rapide  (réseau local)":   {"threads": 400, "timeout": 0.3, "delay": 0.0},
-    "Normal  (recommandé)":     {"threads": 100, "timeout": 1.0, "delay": 0.0},
-    "Lent    (discret)":        {"threads": 20,  "timeout": 2.0, "delay": 0.1},
+    "Rapide  (réseau local)":    {"threads": 400, "timeout": 0.3, "delay": 0.0, "jitter": 0.0,  "max_rate": 0.0,  "randomize": False},
+    "Normal  (recommandé)":      {"threads": 100, "timeout": 1.0, "delay": 0.0, "jitter": 0.0,  "max_rate": 0.0,  "randomize": False},
+    "Lent    (discret)":         {"threads": 20,  "timeout": 2.0, "delay": 0.1, "jitter": 0.0,  "max_rate": 0.0,  "randomize": False},
+    "Furtif  (anti-détection)":  {"threads": 5,   "timeout": 3.0, "delay": 0.0, "jitter": 0.0,  "max_rate": 2.0,  "randomize": True},
 }
 
 # ── Profils de scan ────────────────────────────────────────────────────────────
@@ -141,9 +142,12 @@ def main() -> int:
 
     # ── Récapitulatif ─────────────────────────────────────────────────────────
     scan_type_val = "syn" if est_root else "connect"
-    threads  = perf["threads"]
-    timeout  = perf["timeout"]
-    delay    = perf["delay"]
+    threads   = perf["threads"]
+    timeout   = perf["timeout"]
+    delay     = perf["delay"]
+    max_rate  = perf["max_rate"]
+    jitter    = perf.get("jitter", 0.0)
+    randomize = perf["randomize"]
 
     print("\n╔══════════════════════════════════════════════╗")
     print("║               Récapitulatif                  ║")
@@ -173,7 +177,11 @@ def main() -> int:
         "--threads",   str(threads),
         "--delay",     str(delay),
         "--log-level", "WARNING",
+        "--max-rate",  str(max_rate),
+        "--jitter",    str(jitter),
     ]
+    if randomize:
+        scan_args.append("--randomize")
     if discover:
         scan_args.append("--discover")
     if banner:
