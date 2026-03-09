@@ -6,13 +6,28 @@ Ce fichier fournit des indications à Claude Code lors du travail sur ce dépôt
 
 ### Depuis VS Code (terminal intégré)
 
-Ouvrir le dossier `Port_scanner_Reseau` dans VS Code, puis dans le terminal intégré (`Ctrl+`` ` `` ou `Terminal → New Terminal`) :
+**Prérequis (à faire une seule fois) :**
+- Installer [Python 3.10+](https://www.python.org/downloads/)
+- Installer [VS Code](https://code.visualstudio.com/)
 
+**Première utilisation :**
 ```bash
-# Activer l'environnement virtuel
+# 1. Ouvrir le dossier Port_scanner_Reseau dans VS Code
+# 2. Ouvrir le terminal intégré (Ctrl+` ou Terminal → New Terminal)
+
+# 3. Créer l'environnement virtuel
+python3 -m venv .venv
+
+# 4. Activer l'environnement virtuel
 source .venv/bin/activate
 
-# Lancer le CLI interactif
+# 5. Installer les dépendances
+pip install -r requirements.txt
+```
+
+**Utilisations suivantes (venv déjà créé) :**
+```bash
+source .venv/bin/activate
 python cli.py
 
 # Ou directement en ligne de commande
@@ -21,7 +36,10 @@ python main.py --target 127.0.0.1 --ports 22,80,443
 
 ### Depuis l'exécutable (sans Python ni venv)
 
-Les exécutables compilés sont dans `dist/` — aucune installation requise :
+**Prérequis :** aucun — Python et toutes les dépendances sont embarqués dans le fichier.
+
+> ⚠️ Les exécutables dans `dist/` sont compilés pour **macOS x86_64** (Intel).
+> Sur Mac **M1/M2/M3** (Apple Silicon), utiliser la méthode VS Code ci-dessus.
 
 ```bash
 # CLI interactif
