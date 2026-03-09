@@ -2,6 +2,7 @@
 """Fonctions d'export des résultats de scan."""
 
 import csv
+import html as html_lib
 import json
 from datetime import datetime
 from pathlib import Path
@@ -48,21 +49,24 @@ def _write_html(results: Dict[int, dict], path: Path, target: str, scan_type: st
 
     color_map = {"open": "#2ecc71", "closed": "#e74c3c", "filtered": "#95a5a6"}
 
+    safe_target = html_lib.escape(target)
+    safe_scan_type = html_lib.escape(scan_type)
+
     rows = ""
     for port, info in sorted(results.items()):
         color = color_map.get(info["status"], "#fff")
         rows += (
             f"<tr style='background:{color}22'>"
             f"<td>{port}</td>"
-            f"<td>{info['service']}</td>"
-            f"<td style='color:{color};font-weight:bold'>{info['status']}</td>"
-            f"<td>{info['banner'] or '—'}</td>"
+            f"<td>{html_lib.escape(info['service'])}</td>"
+            f"<td style='color:{color};font-weight:bold'>{html_lib.escape(info['status'])}</td>"
+            f"<td>{html_lib.escape(info['banner']) if info['banner'] else '—'}</td>"
             f"</tr>\n"
         )
 
     html = f"""<!DOCTYPE html>
 <html lang="fr">
-<head><meta charset="UTF-8"><title>Scan — {target}</title>
+<head><meta charset="UTF-8"><title>Scan — {safe_target}</title>
 <style>
   body {{ font-family: monospace; background: #1a1a2e; color: #eee; padding: 2rem; }}
   h1 {{ color: #00d4ff; }}
@@ -76,7 +80,7 @@ def _write_html(results: Dict[int, dict], path: Path, target: str, scan_type: st
 </head>
 <body>
 <h1>Rapport de scan</h1>
-<div class="meta">Cible : <strong>{target}</strong> | Type : {scan_type} | Date : {now}</div>
+<div class="meta">Cible : <strong>{safe_target}</strong> | Type : {safe_scan_type} | Date : {now}</div>
 <div class="stats">
   <span class="stat-open">open: {counts['open']}</span> &nbsp;
   <span class="stat-closed">closed: {counts['closed']}</span> &nbsp;

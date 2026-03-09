@@ -1,15 +1,19 @@
-"""Scanner de ports TCP basique.
+"""Scanner de ports TCP.
 
-Ce module fournit un scanner de ports en mode connect via les sockets Python.
+Ce module fournit un scanner de ports TCP via les sockets Python et scapy (optionnel).
 
 Fonctions :
-  - scan_port_connect(ip, port) -> statut
-  - scan_range(ip, start_port, end_port) -> dict[port] = statut
+  - scan_port_connect(ip, port, timeout)                          -> statut
+  - scan_port_syn(ip, port, timeout)                              -> statut (nécessite scapy + sudo)
+  - scan_range(ip, start_port, end_port, timeout)                 -> dict[port, statut]
+  - scan_range_threaded(ip, ports, scan_fn, timeout, delay, ...)  -> dict[port, statut]
+  - get_service_name(port)                                        -> nom du service
+  - grab_banner(ip, port, timeout)                                -> bannière du service
 
 Valeurs de statut :
   - "open"     (ouvert)
   - "closed"   (fermé)
-  - "filtered" (filtré)
+  - "filtered" (filtré ou inaccessible)
 
 """
 
@@ -31,7 +35,7 @@ def scan_port_connect(ip: str, port: int, timeout: float = 1.0) -> str:
     """Scanne un seul port TCP via connect().
 
     Args:
-        ip: adresse IPv4/IPv6 ou nom d'hôte cible.
+        ip: adresse IPv4 ou nom d'hôte cible (IPv6 non supporté).
         port: numéro de port TCP (1-65535).
         timeout: délai d'expiration du socket en secondes.
 
@@ -125,7 +129,7 @@ def scan_range_threaded(
                 port, status = future.result()
                 results[port] = status
     except KeyboardInterrupt:
-        executor.shutdown(wait=False, cancel_futures=True)
+        # Le bloc `with` gère l'arrêt de l'executor via __exit__
         raise
 
     return results
@@ -156,10 +160,10 @@ def scan_port_syn(ip: str, port: int, timeout: float = 1.0) -> str:
     if resp is None:
         return "filtered"
     if resp.haslayer(TCP):
-        flags = resp[TCP].flags
-        if flags == 0x12:
+        flags = int(resp[TCP].flags)
+        if flags & 0x12 == 0x12:   # SYN + ACK
             return "open"
-        if flags == 0x14:
+        if flags & 0x04:            # RST
             return "closed"
     return "filtered"
 

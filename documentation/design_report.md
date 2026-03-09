@@ -12,7 +12,7 @@ Le projet est organisé en modules séparés selon les responsabilités :
 | `output.py` | Export des résultats (txt, json, csv, html) |
 | `discovery.py` | Découverte d'hôtes sur un réseau |
 | `tests/` | Tests unitaires (pytest) |
-| `reports/` | Documentation du projet |
+| `documentation/` | Documentation du projet (rapports, conception) |
 
 ## Modules
 

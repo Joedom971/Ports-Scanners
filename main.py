@@ -139,6 +139,14 @@ def main(args: Optional[List[str]] = None) -> int:
         format="%(asctime)s [%(levelname)s] %(message)s",
     )
 
+    # Validation des valeurs numériques
+    if parsed.timeout <= 0:
+        print("Erreur : --timeout doit être strictement positif.")
+        return 1
+    if parsed.delay < 0:
+        print("Erreur : --delay doit être >= 0.")
+        return 1
+
     # Sanitisation des entrées
     try:
         target_sanitise = valider_cible(parsed.target)
@@ -147,6 +155,9 @@ def main(args: Optional[List[str]] = None) -> int:
     except ValueError as e:
         print(f"Erreur : {e}")
         return 1
+
+    # Créer le dossier de sortie si nécessaire
+    out_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Choisir la fonction de scan
     if parsed.scan_type == "syn":
@@ -158,8 +169,6 @@ def main(args: Optional[List[str]] = None) -> int:
             scan_fn = scan_port_syn
     else:
         scan_fn = scan_port_connect
-
-    ports = parse_ports(parsed.ports)
 
     # Host discovery
     if parsed.discover:
@@ -202,14 +211,15 @@ def main(args: Optional[List[str]] = None) -> int:
         # Stats
         counts = {"open": 0, "closed": 0, "filtered": 0}
         for info in results.values():
-            counts[info["status"]] += 1
+            counts[info["status"]] = counts.get(info["status"], 0) + 1
         print(f"\n  open: {counts['open']}  closed: {counts['closed']}  filtered: {counts['filtered']}")
 
         all_results[target] = results
 
     # Export fichier
+    if len(targets) > 1:
+        print(f"\nNote : scan multi-hôtes — seuls les résultats de {targets[-1]} sont sauvegardés dans le fichier.")
     results_to_save = list(all_results.values())[-1]
-    out_path = Path(parsed.output)
     write_output(results_to_save, out_path, targets[-1], parsed.scan_type)
     print(f"\nRésultats sauvegardés dans {out_path}")
 

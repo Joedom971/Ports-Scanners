@@ -34,8 +34,7 @@ def test_grab_banner_timeout():
 
 
 def test_scan_range_threaded_returns_all_ports():
-    with patch("scanner.scan_port_connect", return_value="closed"):
-        results = scan_range_threaded("127.0.0.1", [80, 443, 8080], scan_port_connect, timeout=1.0, delay=0.0, max_workers=10)
+    results = scan_range_threaded("127.0.0.1", [80, 443, 8080], scan_port_connect, timeout=1.0, delay=0.0, max_workers=10)
     assert set(results.keys()) == {80, 443, 8080}
 
 def test_scan_range_threaded_status():
@@ -48,8 +47,7 @@ def test_scan_range_threaded_status():
 
 def test_scan_port_syn_no_scapy(monkeypatch):
     """Sans scapy, doit retourner 'filtered', pas crasher."""
-    import sys
-    monkeypatch.setitem(sys.modules, "scapy", None)
-    monkeypatch.setitem(sys.modules, "scapy.all", None)
-    result = scan_port_syn.__wrapped__("127.0.0.1", 80) if hasattr(scan_port_syn, "__wrapped__") else "filtered"
-    assert result in ("filtered", "unavailable")
+    import scanner as scanner_mod
+    monkeypatch.setattr(scanner_mod, "SCAPY_AVAILABLE", False)
+    result = scan_port_syn("127.0.0.1", 80)
+    assert result == "filtered"

@@ -64,7 +64,7 @@ def separateur(titre: str = "") -> None:
 
 
 def main() -> int:
-    est_root = os.geteuid() == 0
+    est_root = getattr(os, "geteuid", lambda: 1)() == 0
 
     print("\n╔══════════════════════════════════════════════╗")
     print("║          Scanner de ports réseau             ║")
