@@ -77,13 +77,16 @@ def main() -> int:
 
     timeout_str = demander("Délai par port en secondes", "1.0")
     try:
-        timeout = float(timeout_str)
+        timeout = float(timeout_str.replace(",", "."))
+        if timeout <= 0:
+            print("  ⚠  Timeout trop bas, valeur minimale 0.1 appliquée.")
+            timeout = 0.1
     except ValueError:
         timeout = 1.0
 
     delay_str = demander("Délai entre ports en secondes (rate limiting)", "0")
     try:
-        delay = float(delay_str)
+        delay = float(delay_str.replace(",", "."))
     except ValueError:
         delay = 0.0
 
