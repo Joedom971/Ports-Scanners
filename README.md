@@ -72,8 +72,7 @@ Port_scanner_Reseau/
 ├── output.py       → Export des résultats (txt, json, csv, html)
 ├── discovery.py    → Découverte des machines actives sur un réseau
 ├── tests/          → Tests automatisés (57 tests)
-├── documentation/  → Rapports de conception, tests, éthique
-└── dist/           → Exécutables compilés (macOS Intel)
+└── documentation/  → Rapports de conception, tests, éthique
 ```
 
 ---
@@ -151,10 +150,8 @@ Pour réduire la détection par les systèmes de surveillance réseau (IDS) :
 
 ### Prérequis
 
-| Méthode | Ce qu'il faut |
-|---------|--------------|
-| Exécutable `dist/` | Rien (Mac Intel uniquement) |
-| Depuis VS Code | Python 3.10+ + VS Code |
+- Python 3.10 ou plus récent
+- VS Code *(recommandé)*
 
 ### Première installation (VS Code)
 
@@ -173,10 +170,6 @@ python cli.py
 
 # Ligne de commande directe
 python main.py --target 192.168.1.1 --ports 22,80,443 --output rapport.html
-
-# Depuis l'exécutable (sans Python)
-./dist/port-scan-cli
-./dist/port-scan --target 192.168.1.1 --ports 80
 ```
 
 ### Lancer les tests
