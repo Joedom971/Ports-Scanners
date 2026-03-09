@@ -1,4 +1,4 @@
-# Scanner de ports réseau
+# Scanner de ports réseau — Guide d'utilisation
 
 Un outil pour analyser les ports ouverts sur une machine ou un réseau.
 Fonctionne en mode interactif (questions/réponses) ou en ligne de commande.
@@ -7,30 +7,25 @@ Fonctionne en mode interactif (questions/réponses) ou en ligne de commande.
 
 ## Prérequis
 
-### Pour utiliser l'exécutable (le plus simple)
-- Un Mac **Intel (x86_64)**
-- Aucune installation requise
-
-> ⚠️ Sur Mac **M1 / M2 / M3**, l'exécutable ne fonctionne pas — utilise la méthode VS Code ci-dessous.
-
-### Pour utiliser depuis VS Code
 - [Python 3.10 ou plus récent](https://www.python.org/downloads/)
-- [VS Code](https://code.visualstudio.com/)
+- [VS Code](https://code.visualstudio.com/) *(recommandé)*
 
 ---
 
-## Installation (VS Code uniquement)
+## Installation
 
-À faire **une seule fois** après avoir ouvert le dossier `Port_scanner_Reseau` dans VS Code :
+À faire **une seule fois** après avoir cloné ou téléchargé le projet :
 
 ```bash
-# 1. Ouvrir le terminal intégré : Ctrl+` (ou Terminal → New Terminal)
+# 1. Ouvrir le terminal dans le dossier du projet
+#    Depuis VS Code : Ctrl+` (ou Terminal → New Terminal)
 
 # 2. Créer l'environnement virtuel
 python3 -m venv .venv
 
 # 3. Activer l'environnement
-source .venv/bin/activate
+source .venv/bin/activate   # macOS / Linux
+.venv\Scripts\activate      # Windows
 
 # 4. Installer les dépendances
 pip install -r requirements.txt
@@ -40,19 +35,21 @@ pip install -r requirements.txt
 
 ## Utilisation
 
+### Activer l'environnement avant chaque session
+
+```bash
+source .venv/bin/activate   # macOS / Linux
+.venv\Scripts\activate      # Windows
+```
+
+---
+
 ### Mode interactif (recommandé pour débuter)
 
 Le scanner pose des questions pas-à-pas : cible, ports, vitesse, format du rapport.
 
-**Depuis VS Code :**
 ```bash
-source .venv/bin/activate
 python cli.py
-```
-
-**Depuis l'exécutable :**
-```bash
-./dist/port-scan-cli
 ```
 
 **Exemple de session :**
@@ -70,26 +67,20 @@ python cli.py
   2. Scan standard — tous les ports réservés (1 à 1024)
   3. Scan complet — tous les ports (1 à 65535, lent)
   4. Personnalisé — je choisis moi-même
+
+── Quelle vitesse de scan ? ────────────────────
+  1. Rapide  (réseau local)
+  2. Normal  (recommandé)                       ← recommandé
+  3. Lent    (discret)
+  4. Furtif  (anti-détection)
 ```
 
 ---
 
 ### Mode ligne de commande (avancé)
 
-**Depuis VS Code :**
 ```bash
-source .venv/bin/activate
-python main.py --target 192.168.1.1 --ports 22,80,443
-```
-
-**Depuis l'exécutable :**
-```bash
-./dist/port-scan --target 192.168.1.1 --ports 22,80,443
-```
-
-**Exemples :**
-```bash
-# Scan des ports courants, résultat en HTML
+# Scan de ports courants, résultat en HTML
 python main.py --target 192.168.1.1 --ports 22,80,443 --output rapport.html
 
 # Scan d'une plage de ports complète
@@ -98,8 +89,11 @@ python main.py --target 192.168.1.1 --ports 1-1024 --output scan.json
 # Scan discret (2 paquets/seconde, ordre aléatoire)
 python main.py --target 192.168.1.1 --ports 1-1024 --max-rate 2 --randomize
 
-# Scan d'un réseau entier (découverte d'hôtes)
+# Découverte des machines actives sur un réseau, puis scan
 python main.py --target 192.168.1.0/24 --discover --ports 22,80
+
+# Récupérer les bannières des services ouverts
+python main.py --target 192.168.1.1 --ports 22,80,443 --banner
 ```
 
 ---
@@ -133,12 +127,21 @@ python main.py --target 192.168.1.0/24 --discover --ports 22,80
 
 ---
 
-## Résultats des scans
+## Où sont sauvegardés les résultats ?
 
-Les fichiers de résultats sont sauvegardés dans le **dossier depuis lequel la commande est lancée**, sauf si tu spécifies un chemin complet :
+Dans le **dossier depuis lequel la commande est lancée**, sauf si tu spécifies un chemin complet :
 
 ```bash
 python main.py --target 192.168.1.1 --ports 80 --output ~/Desktop/scan.html
+```
+
+---
+
+## Lancer les tests
+
+```bash
+python -m pytest tests/ -v
+# Résultat attendu : 57 passed
 ```
 
 ---

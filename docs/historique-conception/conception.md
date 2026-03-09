@@ -1,4 +1,4 @@
-# Conception — Phase 3 : Scanner réseau étendu
+# Conception — Scanner réseau étendu
 
 **Date :** 2026-03-09
 **Statut :** Implémenté et mergé sur `main`
