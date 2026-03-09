@@ -61,7 +61,7 @@ python -m pytest tests/ -v
 Le projet est organisé en plusieurs modules :
 
 - **`cli.py`** — interface interactive simplifiée pour non-experts. Propose des profils prédéfinis (rapide / standard / complet / personnalisé), une vitesse simplifiée (Rapide / Normal / Lent) et auto-détecte le type de scan selon les droits root.
-- **`main.py`** — point d'entrée CLI complet via `argparse`. Supporte `--threads`, `--scan-type`, `--banner`, `--discover`, `--delay`, `--log-level`. Résultats au format `dict[port] = {"status", "service", "banner"}`.
+- **`main.py`** — point d'entrée CLI complet via `argparse`. Supporte `--threads`, `--scan-type`, `--banner`, `--discover`, `--delay`, `--log-level`. Résultats au format `dict[port] = {"status", "service", "banner"}`. Inclut la validation des entrées : `valider_cible()`, `valider_port()`, `valider_fichier_sortie()`, `parse_ports()`.
 - **`scanner.py`** — bibliothèque de scan TCP. Expose :
   - `scan_port_connect(ip, port, timeout)` → `"open"` | `"closed"` | `"filtered"`
   - `scan_port_syn(ip, port, timeout)` → `"open"` | `"closed"` | `"filtered"` (nécessite scapy + sudo)
