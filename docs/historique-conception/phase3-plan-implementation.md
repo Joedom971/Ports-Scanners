@@ -18,7 +18,7 @@
 | 7 | Réécriture `main.py` + `tests/test_main.py` | ✅ |
 | 8 | `requirements.txt` + `CLAUDE.md` | ✅ |
 
-**Total : 19 tests, tous passants.**
+**Total : 48 tests, tous passants.**
 
 ---
 
