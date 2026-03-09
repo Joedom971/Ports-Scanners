@@ -1,5 +1,4 @@
-# discovery.py
-"""Host discovery : ARP sweep (scapy) avec fallback ICMP (ping)."""
+"""Découverte d'hôtes : balayage ARP (scapy) avec repli ICMP (ping)."""
 
 import ipaddress
 import subprocess
