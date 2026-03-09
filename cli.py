@@ -1,39 +1,54 @@
 """Interface CLI interactive pour le scanner de ports.
 
-Lance un assistant pas-à-pas pour configurer et exécuter un scan.
+Lance un assistant simple pas-à-pas.
 
 Utilisation :
   python cli.py
 """
 
-import sys
-from pathlib import Path
+import os
+
+
+# ── Vitesse → paramètres techniques ───────────────────────────────────────────
+VITESSES = {
+    "Rapide  (réseau local)":   {"threads": 400, "timeout": 0.3, "delay": 0.0},
+    "Normal  (recommandé)":     {"threads": 100, "timeout": 1.0, "delay": 0.0},
+    "Lent    (discret)":        {"threads": 20,  "timeout": 2.0, "delay": 0.1},
+}
+
+# ── Profils de scan ────────────────────────────────────────────────────────────
+PROFILS = {
+    "Scan rapide   — ports courants (web, SSH, bureau à distance)": "22,80,443,3389,8080",
+    "Scan standard — tous les ports réservés (1 à 1024)":          "1-1024",
+    "Scan complet  — tous les ports (1 à 65535, lent)":            "1-65535",
+    "Personnalisé  — je choisis moi-même":                         None,
+}
+
+
+def choisir(question: str, options: list, defaut_idx: int = 0) -> str:
+    """Menu numéroté, retourne le choix."""
+    print(f"\n  {question}")
+    for i, opt in enumerate(options, 1):
+        marqueur = "  ← recommandé" if i == defaut_idx + 1 else ""
+        print(f"    {i}. {opt}{marqueur}")
+    while True:
+        rep = input(f"  Votre choix [Entrée = {defaut_idx + 1}] : ").strip()
+        if not rep:
+            return options[defaut_idx]
+        if rep.isdigit() and 1 <= int(rep) <= len(options):
+            return options[int(rep) - 1]
+        print("  Choix invalide, entrez un numéro.")
 
 
 def demander(question: str, defaut: str = "") -> str:
-    """Affiche une question et retourne la saisie (ou la valeur par défaut)."""
-    indication = f" [{defaut}]" if defaut else ""
-    reponse = input(f"  {question}{indication} : ").strip()
-    return reponse if reponse else defaut
+    """Saisie libre avec valeur par défaut."""
+    indication = f" [Entrée = {defaut}]" if defaut else ""
+    rep = input(f"  {question}{indication} : ").strip()
+    return rep if rep else defaut
 
 
-def choisir(question: str, options: list, defaut: str = "") -> str:
-    """Affiche un menu numéroté et retourne le choix."""
-    print(f"\n  {question}")
-    for i, opt in enumerate(options, 1):
-        marqueur = " (défaut)" if opt == defaut else ""
-        print(f"    {i}. {opt}{marqueur}")
-    while True:
-        rep = input("  Votre choix (numéro) : ").strip()
-        if not rep and defaut:
-            return defaut
-        if rep.isdigit() and 1 <= int(rep) <= len(options):
-            return options[int(rep) - 1]
-        print("  Choix invalide, réessayez.")
-
-
-def oui_non(question: str, defaut: bool = False) -> bool:
-    """Pose une question oui/non."""
+def oui_non(question: str, defaut: bool = True) -> bool:
+    """Question oui/non."""
     indication = "[O/n]" if defaut else "[o/N]"
     rep = input(f"  {question} {indication} : ").strip().lower()
     if not rep:
@@ -41,113 +56,129 @@ def oui_non(question: str, defaut: bool = False) -> bool:
     return rep in ("o", "oui", "y", "yes")
 
 
-def afficher_titre(texte: str) -> None:
-    print(f"\n{'─' * 50}")
-    print(f"  {texte}")
-    print(f"{'─' * 50}")
+def separateur(titre: str = "") -> None:
+    if titre:
+        print(f"\n  ── {titre} {'─' * (44 - len(titre))}")
+    else:
+        print(f"\n  {'─' * 48}")
 
 
 def main() -> int:
+    est_root = os.geteuid() == 0
+
     print("\n╔══════════════════════════════════════════════╗")
-    print("║        Scanner de ports — Interface CLI      ║")
+    print("║          Scanner de ports réseau             ║")
+    if est_root:
+        print("║  Mode : SYN scan (avancé, root détecté)      ║")
+    else:
+        print("║  Mode : TCP connect (standard)               ║")
     print("╚══════════════════════════════════════════════╝")
+    print("\n  Répondez aux questions ci-dessous.")
+    print("  Appuyez sur Entrée pour garder la valeur recommandée.")
 
-    # ── 1. Cible ──────────────────────────────────────
-    afficher_titre("1. Cible")
-    target = demander("Adresse IP, nom d'hôte ou CIDR", "127.0.0.1")
+    # ── 1. Cible ──────────────────────────────────────────────────────────────
+    separateur("Quelle machine voulez-vous analyser ?")
+    print("  Exemples : 192.168.1.1  |  monserveur.local  |  192.168.1.0/24")
+    target = demander("Adresse IP ou nom de la machine", "127.0.0.1")
 
-    # ── 2. Ports ──────────────────────────────────────
-    afficher_titre("2. Ports à scanner")
-    print("  Exemples : 80  |  22,80,443  |  1-1024  |  22,80-85")
-    ports = demander("Spécification des ports", "22,80,443")
-
-    # ── 3. Type de scan ───────────────────────────────
-    afficher_titre("3. Type de scan")
-    scan_type = choisir(
-        "Méthode de scan :",
-        ["connect (TCP connect, sans privilèges)", "syn (SYN scan, nécessite sudo + scapy)"],
-        defaut="connect (TCP connect, sans privilèges)",
+    # ── 2. Profil ─────────────────────────────────────────────────────────────
+    separateur("Que voulez-vous scanner ?")
+    profil_choisi = choisir(
+        "Choisissez un profil :",
+        list(PROFILS.keys()),
+        defaut_idx=0,
     )
-    scan_type_val = "connect" if scan_type.startswith("connect") else "syn"
+    ports = PROFILS[profil_choisi]
+    if ports is None:
+        print("\n  Exemples : 80  |  22,80,443  |  1-1024  |  22,80-85")
+        ports = demander("Entrez les ports à scanner", "22,80,443")
 
-    # ── 4. Threads ────────────────────────────────────
-    afficher_titre("4. Performances")
-    threads_str = demander("Nombre de threads parallèles", "100")
-    threads = int(threads_str) if threads_str.isdigit() else 100
-
-    timeout_str = demander("Délai par port en secondes", "1.0")
-    try:
-        timeout = float(timeout_str.replace(",", "."))
-        if timeout <= 0:
-            print("  ⚠  Timeout trop bas, valeur minimale 0.1 appliquée.")
-            timeout = 0.1
-    except ValueError:
-        timeout = 1.0
-
-    delay_str = demander("Délai entre ports en secondes (rate limiting)", "0")
-    try:
-        delay = float(delay_str.replace(",", "."))
-    except ValueError:
-        delay = 0.0
-
-    # ── 5. Options avancées ───────────────────────────
-    afficher_titre("5. Options avancées")
-    discover = oui_non("Activer la découverte d'hôtes avant le scan ?", defaut=False)
-    banner = oui_non("Activer le banner grabbing (ports ouverts) ?", defaut=False)
-
-    # ── 6. Sortie ─────────────────────────────────────
-    afficher_titre("6. Fichier de sortie")
-    format_sortie = choisir(
-        "Format du fichier de résultats :",
-        [".txt (texte brut)", ".json", ".csv", ".html (rapport visuel)"],
-        defaut=".txt (texte brut)",
+    # ── 3. Vitesse ────────────────────────────────────────────────────────────
+    separateur("Quelle vitesse de scan ?")
+    vitesse_choisie = choisir(
+        "Choisissez une vitesse :",
+        list(VITESSES.keys()),
+        defaut_idx=1,
     )
-    ext = format_sortie.split(" ")[0]
+    perf = VITESSES[vitesse_choisie]
 
-    nom_fichier = demander("Nom du fichier de sortie", f"scan_results{ext}")
+    # ── 4. Options extras ─────────────────────────────────────────────────────
+    separateur("Options supplémentaires")
+    print("  (Entrée = non pour toutes)")
+    discover = oui_non(
+        "Chercher d'abord les appareils actifs sur le réseau ?",
+        defaut=False,
+    )
+    banner = oui_non(
+        "Afficher les infos des services trouvés (version, bannière) ?",
+        defaut=False,
+    )
+
+    # ── 5. Rapport ────────────────────────────────────────────────────────────
+    separateur("Où sauvegarder les résultats ?")
+    format_choisi = choisir(
+        "Format du rapport :",
+        [
+            "Rapport visuel HTML  (s'ouvre dans un navigateur)",
+            "Fichier texte .txt   (simple)",
+            "Tableau CSV          (Excel / tableur)",
+            "Données JSON         (développeurs)",
+        ],
+        defaut_idx=0,
+    )
+    ext_map = {0: ".html", 1: ".txt", 2: ".csv", 3: ".json"}
+    ext = ext_map[list(VITESSES.keys()).index(vitesse_choisie) if False else
+                  ["html", "txt", "csv", "json"].index(
+                      format_choisi.split()[2].lstrip(".")
+                  )]
+    # déduction de l'extension depuis le choix
+    if "HTML" in format_choisi:
+        ext = ".html"
+    elif ".txt" in format_choisi:
+        ext = ".txt"
+    elif "CSV" in format_choisi:
+        ext = ".csv"
+    else:
+        ext = ".json"
+
+    nom_fichier = demander("Nom du fichier de résultats", f"scan_results{ext}")
     if not nom_fichier.endswith(ext):
         nom_fichier += ext
 
-    # ── 7. Niveau de log ──────────────────────────────
-    afficher_titre("7. Journalisation")
-    log_level = choisir(
-        "Niveau de journalisation :",
-        ["INFO", "DEBUG", "WARNING"],
-        defaut="INFO",
-    )
+    # ── Récapitulatif ─────────────────────────────────────────────────────────
+    scan_type_val = "syn" if est_root else "connect"
+    threads  = perf["threads"]
+    timeout  = perf["timeout"]
+    delay    = perf["delay"]
 
-    # ── Récapitulatif ─────────────────────────────────
     print("\n╔══════════════════════════════════════════════╗")
     print("║               Récapitulatif                  ║")
     print("╠══════════════════════════════════════════════╣")
-    print(f"║  Cible          : {target:<27}║")
-    print(f"║  Ports          : {ports:<27}║")
-    print(f"║  Type de scan   : {scan_type_val:<27}║")
-    print(f"║  Threads        : {threads:<27}║")
-    print(f"║  Timeout        : {timeout:<27}║")
-    print(f"║  Délai          : {delay:<27}║")
-    print(f"║  Découverte     : {'oui' if discover else 'non':<27}║")
-    print(f"║  Banner         : {'oui' if banner else 'non':<27}║")
-    print(f"║  Sortie         : {nom_fichier:<27}║")
-    print(f"║  Log            : {log_level:<27}║")
+    print(f"║  Cible       : {target:<31}║")
+    print(f"║  Ports       : {ports:<31}║")
+    print(f"║  Vitesse     : {vitesse_choisie.split('(')[0].strip():<31}║")
+    print(f"║  Mode        : {scan_type_val:<31}║")
+    print(f"║  Découverte  : {'oui' if discover else 'non':<31}║")
+    print(f"║  Infos srv.  : {'oui' if banner else 'non':<31}║")
+    print(f"║  Rapport     : {nom_fichier:<31}║")
     print("╚══════════════════════════════════════════════╝")
 
     if not oui_non("\nLancer le scan ?", defaut=True):
         print("\n  Scan annulé.")
         return 0
 
-    # ── Lancement ─────────────────────────────────────
+    # ── Lancement ─────────────────────────────────────────────────────────────
     from main import main as run_scan
 
     scan_args = [
-        "--target", target,
-        "--ports", ports,
+        "--target",    target,
+        "--ports",     ports,
         "--scan-type", scan_type_val,
-        "--output", nom_fichier,
-        "--timeout", str(timeout),
-        "--threads", str(threads),
-        "--delay", str(delay),
-        "--log-level", log_level,
+        "--output",    nom_fichier,
+        "--timeout",   str(timeout),
+        "--threads",   str(threads),
+        "--delay",     str(delay),
+        "--log-level", "WARNING",
     ]
     if discover:
         scan_args.append("--discover")
