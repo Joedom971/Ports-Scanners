@@ -152,8 +152,16 @@ def main() -> int:
         scan_args.append("--banner")
 
     print()
-    return run_scan(scan_args)
+    try:
+        return run_scan(scan_args)
+    except KeyboardInterrupt:
+        print("\n\n  Scan interrompu.")
+        return 1
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except KeyboardInterrupt:
+        print("\n\n  Annulé.")
+        raise SystemExit(1)
