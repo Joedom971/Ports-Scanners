@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="UTF-8"><title>Scan — 192.168.128.1</title>
+<style>
+  body { font-family: monospace; background: #1a1a2e; color: #eee; padding: 2rem; }
+  h1 { color: #00d4ff; }
+  .meta { color: #aaa; margin-bottom: 1rem; }
+  .stats { margin-bottom: 1rem; }
+  .stat-open { color: #2ecc71; } .stat-closed { color: #e74c3c; } .stat-filtered { color: #95a5a6; }
+  table { border-collapse: collapse; width: 100%; }
+  th { background: #16213e; padding: 8px 12px; text-align: left; }
+  td { padding: 6px 12px; border-bottom: 1px solid #333; }
+</style>
+</head>
+<body>
+<h1>Rapport de scan</h1>
+<div class="meta">Cible : <strong>192.168.128.1</strong> | Type : syn | Date : 2026-03-09 20:48:52</div>
+<div class="stats">
+  <span class="stat-open">open: 0</span> &nbsp;
+  <span class="stat-closed">closed: 1</span> &nbsp;
+  <span class="stat-filtered">filtered: 4</span>
+</div>
+<table>
+<tr><th>Port</th><th>Service</th><th>Statut</th><th>Banner</th></tr>
+<tr style='background:#95a5a622'><td>22</td><td>ssh</td><td style='color:#95a5a6;font-weight:bold'>filtered</td><td>—</td></tr>
+<tr style='background:#95a5a622'><td>80</td><td>http</td><td style='color:#95a5a6;font-weight:bold'>filtered</td><td>—</td></tr>
+<tr style='background:#e74c3c22'><td>443</td><td>https</td><td style='color:#e74c3c;font-weight:bold'>closed</td><td>—</td></tr>
+<tr style='background:#95a5a622'><td>3389</td><td>ms-wbt-server</td><td style='color:#95a5a6;font-weight:bold'>filtered</td><td>—</td></tr>
+<tr style='background:#95a5a622'><td>8080</td><td>http-alt</td><td style='color:#95a5a6;font-weight:bold'>filtered</td><td>—</td></tr>
+
+</table>
+</body>
+</html>
