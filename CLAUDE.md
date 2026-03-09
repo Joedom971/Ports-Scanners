@@ -9,7 +9,7 @@ Ce fichier fournit des indications à Claude Code lors du travail sur ce dépôt
 Scan standard, aucun droit particulier requis.
 
 ```bash
-cd /Users/johan-emmanuelhatchi/BXL-Kamkar-5/Port_scanner_Reseau
+cd /chemin/vers/Port_scanner_Reseau
 source .venv/bin/activate
 python cli.py
 ```
@@ -22,9 +22,11 @@ Plus discret, envoie des paquets bruts sans établir de connexion complète.
 Nécessite `sudo` et `scapy` installé.
 
 ```bash
-cd /Users/johan-emmanuelhatchi/BXL-Kamkar-5/Port_scanner_Reseau
-sudo /Users/johan-emmanuelhatchi/BXL-Kamkar-5/Port_scanner_Reseau/.venv/bin/python cli.py
+cd /chemin/vers/Port_scanner_Reseau
+sudo $(pwd)/.venv/bin/python cli.py
 ```
+
+> `sudo` nécessite un chemin absolu. `$(pwd)` l'insère automatiquement si vous êtes déjà dans le dossier du projet.
 
 Le CLI affiche : `Mode : SYN scan (avancé, root détecté)`
 
