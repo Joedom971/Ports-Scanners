@@ -9,6 +9,20 @@ Utilisation :
 import os
 
 
+def _print_safe(text: str) -> None:
+    """Affiche du texte en remplaçant les caractères non-ASCII si nécessaire."""
+    try:
+        print(text)
+    except UnicodeEncodeError:
+        # Remplacement des caractères de bordure par des équivalents ASCII
+        ascii_text = (text
+            .replace("╔", "+").replace("╗", "+").replace("╚", "+").replace("╝", "+")
+            .replace("║", "|").replace("═", "=").replace("─", "-")
+            .replace("┄", "-")
+        )
+        print(ascii_text)
+
+
 # ── Vitesse → paramètres techniques ───────────────────────────────────────────
 # Chaque vitesse configure automatiquement threads, timeout, délai et options de furtivité.
 # L'utilisateur choisit une vitesse simple ; les détails techniques sont gérés ici.
@@ -77,13 +91,13 @@ def main() -> int:
     est_root = getattr(os, "geteuid", lambda: 1)() == 0
 
     # Affichage de l'en-tête avec le mode de scan détecté automatiquement
-    print("\n╔══════════════════════════════════════════════╗")
-    print("║          Scanner de ports réseau             ║")
+    _print_safe("\n╔══════════════════════════════════════════════╗")
+    _print_safe("║          Scanner de ports réseau             ║")
     if est_root:
-        print("║  Mode : SYN scan (avancé, root détecté)      ║")
+        _print_safe("║  Mode : SYN scan (avancé, root détecté)      ║")
     else:
-        print("║  Mode : TCP connect (standard)               ║")
-    print("╚══════════════════════════════════════════════╝")
+        _print_safe("║  Mode : TCP connect (standard)               ║")
+    _print_safe("╚══════════════════════════════════════════════╝")
     print("\n  Répondez aux questions ci-dessous.")
     print("  Appuyez sur Entrée pour garder la valeur recommandée.")
 
@@ -126,6 +140,25 @@ def main() -> int:
         "Afficher les infos des services trouvés (version, bannière) ?",
         defaut=False,
     )
+    version_detect = oui_non(
+        "Détecter la version des services trouvés (ex: Apache/2.4) ?",
+        defaut=False,
+    )
+    firewall_detect_asked = oui_non(
+        "Détecter le type de pare-feu (DROP silencieux vs REJECT actif) ?",
+        defaut=False,
+    )
+    if firewall_detect_asked and not est_root:
+        print("  Note : --firewall-detect nécessite sudo (macOS/Linux) ou admin (Windows).")
+    firewall_detect = firewall_detect_asked and est_root
+
+    os_detect_asked = oui_non(
+        "Tenter de détecter l'OS de la cible ?",
+        defaut=False,
+    )
+    if os_detect_asked and not est_root:
+        print("  Note : --os-detect nécessite sudo (macOS/Linux) ou admin (Windows).")
+    os_detect = os_detect_asked and est_root
 
     # ── 5. Rapport ────────────────────────────────────────────────────────────
     separateur("Où sauvegarder les résultats ?")
@@ -165,17 +198,20 @@ def main() -> int:
     randomize = perf["randomize"]
 
     # Affiche un résumé de tous les paramètres avant de lancer le scan
-    print("\n╔══════════════════════════════════════════════╗")
-    print("║               Récapitulatif                  ║")
-    print("╠══════════════════════════════════════════════╣")
-    print(f"║  Cible       : {target:<31}║")
-    print(f"║  Ports       : {ports:<31}║")
-    print(f"║  Vitesse     : {vitesse_choisie.split('(')[0].strip():<31}║")
-    print(f"║  Mode        : {scan_type_val:<31}║")
-    print(f"║  Découverte  : {'oui' if discover else 'non':<31}║")
-    print(f"║  Infos srv.  : {'oui' if banner else 'non':<31}║")
-    print(f"║  Rapport     : {nom_fichier:<31}║")
-    print("╚══════════════════════════════════════════════╝")
+    _print_safe("\n╔══════════════════════════════════════════════╗")
+    _print_safe("║               Récapitulatif                  ║")
+    _print_safe("╠══════════════════════════════════════════════╣")
+    _print_safe(f"║  Cible       : {target:<31}║")
+    _print_safe(f"║  Ports       : {ports:<31}║")
+    _print_safe(f"║  Vitesse     : {vitesse_choisie.split('(')[0].strip():<31}║")
+    _print_safe(f"║  Mode        : {scan_type_val:<31}║")
+    _print_safe(f"║  Découverte  : {'oui' if discover else 'non':<31}║")
+    _print_safe(f"║  Infos srv.  : {'oui' if banner else 'non':<31}║")
+    _print_safe(f"║  Ver. svc    : {'oui' if version_detect else 'non':<31}║")
+    _print_safe(f"║  Pare-feu    : {'oui' if firewall_detect else 'non':<31}║")
+    _print_safe(f"║  Détect. OS  : {'oui' if os_detect else 'non':<31}║")
+    _print_safe(f"║  Rapport     : {nom_fichier:<31}║")
+    _print_safe("╚══════════════════════════════════════════════╝")
 
     if not oui_non("\nLancer le scan ?", defaut=True):
         print("\n  Scan annulé.")
@@ -205,6 +241,12 @@ def main() -> int:
         scan_args.append("--discover")
     if banner:
         scan_args.append("--banner")
+    if version_detect:
+        scan_args.append("--version-detect")
+    if firewall_detect:
+        scan_args.append("--firewall-detect")
+    if os_detect:
+        scan_args.append("--os-detect")
 
     print()
     try:

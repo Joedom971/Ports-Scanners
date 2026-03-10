@@ -63,6 +63,12 @@ def valider_cible(cible: str) -> str:
         return cible
     except ValueError:
         pass
+    # Tentative de parsing comme adresse IP simple (IPv4 ou IPv6)
+    try:
+        ipaddress.ip_address(cible)
+        return cible
+    except ValueError:
+        pass
     # Hostname / IP simple : vérification basique des caractères autorisés
     caracteres_autorises = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-_")
     if not all(c in caracteres_autorises for c in cible):
@@ -303,12 +309,18 @@ def main(args: Optional[List[str]] = None) -> int:
         all_results[target] = results
 
     # Export des résultats dans un fichier
-    if len(targets) > 1:
-        # En cas de scan multi-hôtes, seul le dernier hôte est sauvegardé dans le fichier
-        print(f"\nNote : scan multi-hôtes — seuls les résultats de {targets[-1]} sont sauvegardés dans le fichier.")
-    results_to_save = list(all_results.values())[-1]
-    write_output(results_to_save, out_path, targets[-1], parsed.scan_type)
-    print(f"\nRésultats sauvegardés dans {out_path}")
+    if len(all_results) == 1:
+        # Un seul hôte : comportement standard
+        target_key = list(all_results.keys())[0]
+        write_output(all_results[target_key], out_path, target_key, parsed.scan_type)
+        print(f"\nRésultats sauvegardés dans {out_path}")
+    else:
+        # Plusieurs hôtes : un fichier par hôte (nom_base_IP.ext)
+        for host_ip, host_results in all_results.items():
+            safe_ip = host_ip.replace(".", "_").replace(":", "_")
+            host_path = out_path.parent / f"{out_path.stem}_{safe_ip}{out_path.suffix}"
+            write_output(host_results, host_path, host_ip, parsed.scan_type)
+            print(f"  Résultats de {host_ip} sauvegardés dans {host_path}")
 
     return 0
 
