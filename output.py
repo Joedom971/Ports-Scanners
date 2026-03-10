@@ -29,7 +29,8 @@ def _write_txt(results: Dict[int, dict], path: Path) -> None:
     with path.open("w", encoding="utf-8") as f:
         # sorted() trie les ports par ordre croissant
         for port, info in sorted(results.items()):
-            f.write(f"{port:5d}: {info['status']}  {info['service']}  {info['banner']}\n")
+            version_str = f"  [{info['version']}]" if info.get("version") else ""
+            f.write(f"{port:5d}: {info['status']}  {info['service']}  {info['banner']}{version_str}\n")
 
 
 def _write_json(results: Dict[int, dict], path: Path) -> None:
@@ -43,11 +44,11 @@ def _write_csv(results: Dict[int, dict], path: Path) -> None:
     """Écrit les résultats en CSV (compatible Excel/tableur)."""
     with path.open("w", encoding="utf-8", newline="") as f:
         # DictWriter génère automatiquement les en-têtes et les lignes
-        writer = csv.DictWriter(f, fieldnames=["port", "status", "service", "banner"])
+        writer = csv.DictWriter(f, fieldnames=["port", "status", "service", "banner", "version"])
         writer.writeheader()
         for port, info in sorted(results.items()):
-            # ** décompresse le dict info pour fusionner avec le numéro de port
-            writer.writerow({"port": port, **info})
+            writer.writerow({"port": port, "status": info["status"], "service": info["service"],
+                             "banner": info["banner"], "version": info.get("version", "")})
 
 
 def _write_html(results: Dict[int, dict], path: Path, target: str, scan_type: str) -> None:
@@ -77,6 +78,7 @@ def _write_html(results: Dict[int, dict], path: Path, target: str, scan_type: st
             f"<td>{html_lib.escape(info['service'])}</td>"
             f"<td style='color:{color};font-weight:bold'>{html_lib.escape(info['status'])}</td>"
             f"<td>{html_lib.escape(info['banner']) if info['banner'] else '—'}</td>"
+            f"<td>{html_lib.escape(info.get('version', '')) or '—'}</td>"
             f"</tr>\n"
         )
 
@@ -104,7 +106,7 @@ def _write_html(results: Dict[int, dict], path: Path, target: str, scan_type: st
   <span class="stat-filtered">filtered: {counts['filtered']}</span>
 </div>
 <table>
-<tr><th>Port</th><th>Service</th><th>Statut</th><th>Banner</th></tr>
+<tr><th>Port</th><th>Service</th><th>Statut</th><th>Banner</th><th>Version</th></tr>
 {rows}
 </table>
 </body>
