@@ -130,7 +130,7 @@ def main(args: Optional[List[str]] = None) -> int:
     parser.add_argument("--scan-type", choices=["connect", "syn"], default="connect",
                         help="Type de scan (défaut: connect)")
     parser.add_argument("--output", default="scan_results.txt",
-                        help="Fichier de sortie (.txt/.json/.csv/.html)")
+                        help="Fichier de sortie (.txt/.json/.csv/.html/.xml)")
     parser.add_argument("--timeout", type=float, default=1.0,
                         help="Délai par port en secondes (défaut: 1.0)")
     parser.add_argument("--threads", type=int, default=100,

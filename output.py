@@ -97,7 +97,7 @@ def _write_xml(results: Dict[int, dict], path: Path, target: str, scan_type: str
     # ET.indent() ajoute de l'indentation lisible (Python 3.9+)
     ET.indent(root, space="  ")
     tree = ET.ElementTree(root)
-    tree.write(str(path), encoding="unicode", xml_declaration=True)
+    tree.write(str(path), encoding="utf-8", xml_declaration=True)
 
 
 def _write_html(results: Dict[int, dict], path: Path, target: str, scan_type: str) -> None:
