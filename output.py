@@ -4,6 +4,7 @@
 import csv
 import html as html_lib
 import json
+import xml.etree.ElementTree as ET
 from datetime import datetime
 from pathlib import Path
 from typing import Dict
@@ -17,6 +18,8 @@ def write_output(results: Dict[int, dict], output_path: Path, target: str, scan_
         _write_json(results, output_path)
     elif ext == ".csv":
         _write_csv(results, output_path)
+    elif ext == ".xml":
+        _write_xml(results, output_path, target, scan_type)
     elif ext == ".html":
         _write_html(results, output_path, target, scan_type)
     else:
@@ -51,6 +54,50 @@ def _write_csv(results: Dict[int, dict], path: Path) -> None:
             writer.writerow({"port": port, "status": info["status"], "service": info["service"],
                              "banner": info["banner"], "version": info.get("version", ""),
                              "firewall": info.get("firewall", "")})
+
+
+def _write_xml(results: Dict[int, dict], path: Path, target: str, scan_type: str) -> None:
+    """Génère un rapport XML compatible avec le format Nmap/Metasploit.
+
+    Structure :
+      <nmaprun scanner="port-scanner" target="..." type="...">
+        <host>
+          <address addr="..." addrtype="ipv4"/>
+          <ports>
+            <port protocol="tcp" portid="22">
+              <state state="open"/>
+              <service name="ssh" version="..." banner="..."/>
+              <firewall type="..."/>  <!-- seulement si présent -->
+            </port>
+          </ports>
+        </host>
+      </nmaprun>
+    """
+    root = ET.Element("nmaprun", scanner="port-scanner", target=target, type=scan_type)
+    host_elem = ET.SubElement(root, "host")
+    ET.SubElement(host_elem, "address", addr=target, addrtype="ipv4")
+    ports_elem = ET.SubElement(host_elem, "ports")
+
+    for port, info in sorted(results.items()):
+        port_elem = ET.SubElement(ports_elem, "port", protocol="tcp", portid=str(port))
+        ET.SubElement(port_elem, "state", state=info.get("status", "unknown"))
+
+        # Attributs du service : nom obligatoire, version et bannière optionnels
+        svc_attrs: dict = {"name": info.get("service", "")}
+        if info.get("version"):
+            svc_attrs["version"] = info["version"]
+        if info.get("banner"):
+            svc_attrs["banner"] = info["banner"]
+        ET.SubElement(port_elem, "service", **svc_attrs)
+
+        # Élément firewall uniquement si le type de filtrage a été détecté
+        if info.get("firewall"):
+            ET.SubElement(port_elem, "firewall", type=info["firewall"])
+
+    # ET.indent() ajoute de l'indentation lisible (Python 3.9+)
+    ET.indent(root, space="  ")
+    tree = ET.ElementTree(root)
+    tree.write(str(path), encoding="unicode", xml_declaration=True)
 
 
 def _write_html(results: Dict[int, dict], path: Path, target: str, scan_type: str) -> None:

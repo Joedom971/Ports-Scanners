@@ -46,3 +46,69 @@ def test_html_stats(tmp_path):
     write_output(RESULTS, out, "10.0.0.1", "syn")
     html = out.read_text()
     assert "1 open" in html or "open: 1" in html
+
+import xml.etree.ElementTree as ET
+import tempfile
+
+def test_write_xml_creates_valid_file():
+    from output import write_output
+    results = {
+        22: {"status": "open", "service": "ssh", "banner": "SSH-2.0-OpenSSH_8.9",
+             "os": "Linux/Unix", "version": "OpenSSH_8.9", "firewall": ""},
+        80: {"status": "filtered", "service": "http", "banner": "",
+             "os": "", "version": "", "firewall": "filtered-silent"},
+    }
+    with tempfile.NamedTemporaryFile(suffix=".xml", delete=False) as f:
+        path = Path(f.name)
+    write_output(results, path, "192.168.1.1", "connect")
+    tree = ET.parse(path)
+    root = tree.getroot()
+    assert root.tag == "nmaprun"
+    ports = root.findall(".//port")
+    assert len(ports) == 2
+
+def test_write_xml_port_attributes():
+    from output import write_output
+    results = {
+        443: {"status": "closed", "service": "https", "banner": "",
+              "os": "", "version": "", "firewall": ""},
+    }
+    with tempfile.NamedTemporaryFile(suffix=".xml", delete=False) as f:
+        path = Path(f.name)
+    write_output(results, path, "10.0.0.1", "syn")
+    tree = ET.parse(path)
+    root = tree.getroot()
+    port_elem = root.find(".//port")
+    assert port_elem.get("portid") == "443"
+    assert port_elem.get("protocol") == "tcp"
+    state = port_elem.find("state")
+    assert state.get("state") == "closed"
+
+def test_write_xml_service_version_attribute():
+    from output import write_output
+    results = {
+        22: {"status": "open", "service": "ssh", "banner": "",
+             "os": "", "version": "OpenSSH_8.9", "firewall": ""},
+    }
+    with tempfile.NamedTemporaryFile(suffix=".xml", delete=False) as f:
+        path = Path(f.name)
+    write_output(results, path, "10.0.0.1", "connect")
+    tree = ET.parse(path)
+    root = tree.getroot()
+    svc = root.find(".//service")
+    assert svc.get("version") == "OpenSSH_8.9"
+
+def test_write_xml_firewall_element_present():
+    from output import write_output
+    results = {
+        80: {"status": "filtered", "service": "http", "banner": "",
+             "os": "", "version": "", "firewall": "filtered-active"},
+    }
+    with tempfile.NamedTemporaryFile(suffix=".xml", delete=False) as f:
+        path = Path(f.name)
+    write_output(results, path, "10.0.0.1", "connect")
+    tree = ET.parse(path)
+    root = tree.getroot()
+    fw = root.find(".//firewall")
+    assert fw is not None
+    assert fw.get("type") == "filtered-active"
