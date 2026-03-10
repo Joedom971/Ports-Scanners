@@ -205,32 +205,42 @@ Pour réduire la détection par les systèmes de surveillance réseau (IDS) :
 ### Prérequis
 
 - Python 3.10 ou plus récent
-- VS Code *(recommandé)*
+- Un terminal (cmd / PowerShell sur Windows, Terminal sur macOS/Linux)
 
-### Première installation (VS Code)
+### Installation (à faire une seule fois)
 
 ```bash
-# Dans le terminal VS Code (Ctrl+`)
-python3 -m venv .venv          # crée un environnement Python isolé
-source .venv/bin/activate       # l'active
-pip install -r requirements.txt # installe les dépendances
+# macOS / Linux
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+
+# Windows (PowerShell ou cmd)
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
 ```
 
 ### Lancer le scanner
 
 ```bash
-# Mode interactif (recommandé)
+# Mode interactif (recommandé — pose les questions une par une)
 python cli.py
 
 # Ligne de commande directe
 python main.py --target 192.168.1.1 --ports 22,80,443 --output rapport.html
+
+# SYN scan discret (nécessite sudo sur macOS/Linux, admin sur Windows)
+sudo $(pwd)/.venv/bin/python main.py --target 192.168.1.1 --ports 1-1024 --scan-type syn
 ```
+
+> Pour les instructions détaillées par système (Linux / macOS / Windows) et pour le SYN scan, consulter **[GUIDE_UTILISATION.md](GUIDE_UTILISATION.md)**.
 
 ### Lancer les tests
 
 ```bash
 python -m pytest tests/ -v
-# 57 tests, résultat attendu : 57 passed
+# 74 tests, résultat attendu : 74 passed
 ```
 
 ---
