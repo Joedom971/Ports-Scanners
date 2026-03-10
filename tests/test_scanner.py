@@ -158,3 +158,48 @@ def test_detect_os_returns_unknown_on_no_response(monkeypatch):
     monkeypatch.setattr("scanner.sr1", lambda *a, **kw: None)
     result = scanner.detect_os("192.0.2.1", timeout=0.1)
     assert result == "unknown"
+
+def test_detect_service_version_returns_string():
+    from scanner import detect_service_version
+    result = detect_service_version("127.0.0.1", 9999, "unknown", timeout=0.2)
+    assert isinstance(result, str)
+
+def test_detect_service_version_http_extracts_server_header(monkeypatch):
+    import socket
+    import scanner
+    class FakeSocket:
+        def __enter__(self): return self
+        def __exit__(self, *a): pass
+        def settimeout(self, t): pass
+        def connect_ex(self, addr): return 0
+        def sendall(self, data): pass
+        def recv(self, n): return b"HTTP/1.1 200 OK\r\nServer: nginx/1.18.0\r\nContent-Type: text/html\r\n"
+    monkeypatch.setattr(socket, "socket", lambda *a, **kw: FakeSocket())
+    result = scanner.detect_service_version("127.0.0.1", 80, "http", timeout=1.0)
+    assert result == "nginx/1.18.0"
+
+def test_detect_service_version_fallback_first_line(monkeypatch):
+    import socket
+    import scanner
+    class FakeSocket:
+        def __enter__(self): return self
+        def __exit__(self, *a): pass
+        def settimeout(self, t): pass
+        def connect_ex(self, addr): return 0
+        def sendall(self, data): pass
+        def recv(self, n): return b"SSH-2.0-OpenSSH_8.9\r\nmore data"
+    monkeypatch.setattr(socket, "socket", lambda *a, **kw: FakeSocket())
+    result = scanner.detect_service_version("127.0.0.1", 22, "ssh", timeout=1.0)
+    assert result == "SSH-2.0-OpenSSH_8.9"
+
+def test_detect_service_version_returns_empty_on_connection_failure(monkeypatch):
+    import socket
+    import scanner
+    class FakeSocket:
+        def __enter__(self): return self
+        def __exit__(self, *a): pass
+        def settimeout(self, t): pass
+        def connect_ex(self, addr): return 111  # ECONNREFUSED
+    monkeypatch.setattr(socket, "socket", lambda *a, **kw: FakeSocket())
+    result = scanner.detect_service_version("127.0.0.1", 9999, "unknown", timeout=0.2)
+    assert result == ""

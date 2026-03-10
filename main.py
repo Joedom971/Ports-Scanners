@@ -23,6 +23,7 @@ from typing import Dict, List, Optional
 
 from scanner import (
     detect_os,
+    detect_service_version,
     grab_banner,
     get_service_name,
     resoudre_cible,
@@ -149,6 +150,8 @@ def main(args: Optional[List[str]] = None) -> int:
                         help="Variation aléatoire du délai en secondes (0 = désactivé)")
     parser.add_argument("--os-detect", action="store_true",
                         help="Tenter de détecter le système d'exploitation (nécessite scapy + sudo)")
+    parser.add_argument("--version-detect", action="store_true",
+                        help="Détecter la version des services ouverts (probe actif par protocole)")
 
     parsed = parser.parse_args(args=args)
 
@@ -263,11 +266,21 @@ def main(args: Optional[List[str]] = None) -> int:
             # Banner grabbing uniquement sur les ports ouverts (inutile sur closed/filtered)
             if parsed.banner and status == "open":
                 banner = grab_banner(target, port, timeout=parsed.timeout)
-            results[port] = {"status": status, "service": service, "banner": banner, "os": os_guess}
+            version = ""
+            if parsed.version_detect and status == "open":
+                version = detect_service_version(target, port, service, timeout=parsed.timeout)
+            results[port] = {
+                "status": status,
+                "service": service,
+                "banner": banner,
+                "os": os_guess,
+                "version": version,
+            }
 
         # Affichage des résultats dans le terminal, triés par numéro de port
         for port, info in sorted(results.items()):
-            print(f"  {port:5d}  {info['status']:<10} {info['service']:<15} {info['banner']}")
+            version_str = f"  [{info.get('version')}]" if info.get("version") else ""
+            print(f"  {port:5d}  {info['status']:<10} {info['service']:<15} {info['banner']}{version_str}")
 
         # Calcul et affichage des statistiques globales
         counts = {"open": 0, "closed": 0, "filtered": 0}
