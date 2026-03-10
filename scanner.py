@@ -246,8 +246,12 @@ def scan_port_syn(ip: str, port: int, timeout: float = 1.0) -> str:
 def detect_os(ip: str, timeout: float = 1.0) -> str:
     """Tente de détecter le système d'exploitation via TCP fingerprinting.
 
-    Analyse le TTL de la réponse SYN-ACK pour estimer l'OS.
+    Analyse le TTL de la réponse SYN-ACK (ou RST) pour estimer l'OS.
     Nécessite scapy et sudo (raw sockets).
+
+    Limitation : le TTL observé est le TTL initial moins le nombre de sauts.
+    Un hôte Windows (TTL initial 128) à 65+ sauts peut être classifié Linux/Unix.
+    Les résultats sont indicatifs, pas garantis.
 
     Returns:
         "Linux/Unix"     — TTL <= 64

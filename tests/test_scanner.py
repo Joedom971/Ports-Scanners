@@ -152,8 +152,9 @@ def test_detect_os_returns_unknown_without_scapy(monkeypatch):
     assert result == "unknown"
 
 def test_detect_os_returns_unknown_on_no_response(monkeypatch):
-    import scanner
+    import scanner, os
     monkeypatch.setattr(scanner, "SCAPY_AVAILABLE", True)
+    monkeypatch.setattr(os, "geteuid", lambda: 0)
     monkeypatch.setattr("scanner.sr1", lambda *a, **kw: None)
     result = scanner.detect_os("192.0.2.1", timeout=0.1)
     assert result == "unknown"
