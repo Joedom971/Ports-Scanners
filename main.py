@@ -32,6 +32,8 @@ from scanner import (
 )
 from output import write_output
 
+# Tentative d'import de tqdm pour afficher une barre de progression.
+# Si tqdm n'est pas installé, on continue sans barre.
 try:
     from tqdm import tqdm
     TQDM_AVAILABLE = True
@@ -52,17 +54,18 @@ def valider_cible(cible: str) -> str:
     cible = cible.strip()
     if not cible:
         raise ValueError("La cible ne peut pas être vide.")
-    # Tentative CIDR
+    # Tentative de parsing CIDR (ex. "192.168.1.0/24")
     try:
         ipaddress.ip_network(cible, strict=False)
         return cible
     except ValueError:
         pass
-    # Hostname / IP simple : vérification basique des caractères
+    # Hostname / IP simple : vérification basique des caractères autorisés
     caracteres_autorises = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-_")
     if not all(c in caracteres_autorises for c in cible):
         raise ValueError(f"Cible invalide : '{cible}' contient des caractères non autorisés.")
     if len(cible) > 253:
+        # La norme DNS limite les noms d'hôte à 253 caractères maximum
         raise ValueError(f"Cible invalide : nom d'hôte trop long ({len(cible)} caractères).")
     return cible
 
@@ -92,26 +95,31 @@ def parse_ports(port_str: str) -> List[int]:
     """
     ports: List[int] = []
     try:
+        # Découpe la chaîne par les virgules (ex. "22,80-85" → ["22", "80-85"])
         for part in port_str.split(","):
             part = part.strip()
             if not part:
                 continue
             if "-" in part:
+                # Plage de ports : "80-85" → ports 80, 81, 82, 83, 84, 85
                 start_str, end_str = part.split("-", 1)
                 start, end = valider_port(int(start_str)), valider_port(int(end_str))
                 if start > end:
-                    start, end = end, start
+                    start, end = end, start  # corrige si l'ordre est inversé (ex. "85-80")
                 ports.extend(range(start, end + 1))
             else:
+                # Port unique
                 ports.append(valider_port(int(part)))
     except (ValueError, TypeError) as e:
         raise ValueError(f"Spécification de ports invalide : {e}")
     if not ports:
         raise ValueError("Aucun port valide trouvé dans la spécification.")
+    # sorted(set(...)) : supprime les doublons et trie par ordre croissant
     return sorted(set(ports))
 
 
 def main(args: Optional[List[str]] = None) -> int:
+    # Définition de tous les arguments acceptés en ligne de commande
     parser = argparse.ArgumentParser(description="Scanner de ports TCP")
     parser.add_argument("--target", required=True, help="Hôte, IP ou sous-réseau CIDR cible")
     parser.add_argument("--ports", required=True,
@@ -141,12 +149,13 @@ def main(args: Optional[List[str]] = None) -> int:
 
     parsed = parser.parse_args(args=args)
 
+    # Configuration du système de logs (DEBUG = très verbeux, WARNING = seulement les alertes)
     logging.basicConfig(
         level=getattr(logging, parsed.log_level),
         format="%(asctime)s [%(levelname)s] %(message)s",
     )
 
-    # Validation des valeurs numériques
+    # Validation des valeurs numériques avant de commencer le scan
     if parsed.timeout <= 0:
         print("Erreur : --timeout doit être strictement positif.")
         return 1
@@ -160,10 +169,11 @@ def main(args: Optional[List[str]] = None) -> int:
         print("Erreur : --jitter doit être >= 0.")
         return 1
     if parsed.max_rate > 0 and parsed.threads > 1:
+        # En mode max-rate, les envois sont sérialisés → plusieurs threads ne servent à rien
         print(f"Note : --max-rate sérialise les envois — --threads {parsed.threads} n'a pas d'effet. "
               f"Les paquets seront envoyés à {parsed.max_rate} pkt/s.")
 
-    # Sanitisation des entrées
+    # Sanitisation des entrées utilisateur (protection contre les valeurs malformées)
     try:
         target_sanitise = valider_cible(parsed.target)
         ports = parse_ports(parsed.ports)
@@ -172,27 +182,28 @@ def main(args: Optional[List[str]] = None) -> int:
         print(f"Erreur : {e}")
         return 1
 
-    # Créer le dossier de sortie si nécessaire
+    # Crée le dossier de destination si le chemin de sortie contient des sous-dossiers
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Choisir la fonction de scan
+    # Sélection de la fonction de scan selon le type demandé
     if parsed.scan_type == "syn":
         if not SCAPY_AVAILABLE:
             print("AVERTISSEMENT : scapy non disponible. Installez-le : pip install scapy")
             print("Fallback sur TCP connect.")
             scan_fn = scan_port_connect
         else:
-            scan_fn = scan_port_syn
+            scan_fn = scan_port_syn  # scan SYN via raw packets
     else:
-        scan_fn = scan_port_connect
+        scan_fn = scan_port_connect  # scan TCP connect standard
 
-    # Résolution DNS unique (évite N résolutions pour N ports)
-    # Les CIDR (ex. 192.168.1.0/24) sont traités par discover_hosts — pas de résolution ici.
+    # Résolution DNS unique : on résout le nom d'hôte une seule fois au lieu de le résoudre
+    # à chaque port scanné (évite N requêtes DNS pour N ports).
+    # Les CIDR (ex. 192.168.1.0/24) sont traités par discover_hosts → pas de résolution ici.
     import ipaddress as _ipaddress
     _is_cidr = False
     try:
         _ipaddress.ip_network(target_sanitise, strict=False)
-        _is_cidr = "/" in target_sanitise
+        _is_cidr = "/" in target_sanitise  # vérifie que c'est bien un réseau, pas une IP seule
     except ValueError:
         pass
     if not _is_cidr:
@@ -202,7 +213,7 @@ def main(args: Optional[List[str]] = None) -> int:
             print(f"Erreur : impossible de résoudre '{target_sanitise}' — {e}")
             return 1
 
-    # Host discovery
+    # Host discovery : détecte les machines actives sur le réseau avant de scanner leurs ports
     if parsed.discover:
         from discovery import discover_hosts
         logging.info(f"Host discovery sur {target_sanitise}...")
@@ -212,13 +223,16 @@ def main(args: Optional[List[str]] = None) -> int:
             return 1
         print(f"{len(targets)} hôte(s) actif(s) : {', '.join(targets)}")
     else:
+        # Pas de discovery : on scanne uniquement la cible fournie
         targets = [target_sanitise]
 
+    # Dictionnaire pour stocker les résultats de tous les hôtes scannés
     all_results: Dict[str, Dict[int, dict]] = {}
 
     for target in targets:
         print(f"\nScan de {target} — {len(ports)} ports ({parsed.scan_type})")
 
+        # Lance le scan multi-threadé sur tous les ports
         raw = scan_range_threaded(
             target, ports, scan_fn,
             timeout=parsed.timeout,
@@ -229,21 +243,23 @@ def main(args: Optional[List[str]] = None) -> int:
             jitter=parsed.jitter,
         )
 
-        # Enrichir avec service name et banner
+        # Enrichissement : ajoute le nom du service et la bannière à chaque résultat brut
         results: Dict[int, dict] = {}
+        # tqdm affiche une barre de progression si disponible, sinon itération normale
         port_iter = tqdm(raw.items(), desc="Enrichissement") if TQDM_AVAILABLE else raw.items()
         for port, status in port_iter:
             service = get_service_name(port)
             banner = ""
+            # Banner grabbing uniquement sur les ports ouverts (inutile sur closed/filtered)
             if parsed.banner and status == "open":
                 banner = grab_banner(target, port, timeout=parsed.timeout)
             results[port] = {"status": status, "service": service, "banner": banner}
 
-        # Affichage console
+        # Affichage des résultats dans le terminal, triés par numéro de port
         for port, info in sorted(results.items()):
             print(f"  {port:5d}  {info['status']:<10} {info['service']:<15} {info['banner']}")
 
-        # Stats
+        # Calcul et affichage des statistiques globales
         counts = {"open": 0, "closed": 0, "filtered": 0}
         for info in results.values():
             counts[info["status"]] = counts.get(info["status"], 0) + 1
@@ -251,8 +267,9 @@ def main(args: Optional[List[str]] = None) -> int:
 
         all_results[target] = results
 
-    # Export fichier
+    # Export des résultats dans un fichier
     if len(targets) > 1:
+        # En cas de scan multi-hôtes, seul le dernier hôte est sauvegardé dans le fichier
         print(f"\nNote : scan multi-hôtes — seuls les résultats de {targets[-1]} sont sauvegardés dans le fichier.")
     results_to_save = list(all_results.values())[-1]
     write_output(results_to_save, out_path, targets[-1], parsed.scan_type)

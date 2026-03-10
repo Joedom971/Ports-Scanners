@@ -10,14 +10,18 @@ import os
 
 
 # ── Vitesse → paramètres techniques ───────────────────────────────────────────
+# Chaque vitesse configure automatiquement threads, timeout, délai et options de furtivité.
+# L'utilisateur choisit une vitesse simple ; les détails techniques sont gérés ici.
 VITESSES = {
     "Rapide  (réseau local)":    {"threads": 400, "timeout": 0.3, "delay": 0.0, "jitter": 0.0,  "max_rate": 0.0,  "randomize": False},
     "Normal  (recommandé)":      {"threads": 100, "timeout": 1.0, "delay": 0.0, "jitter": 0.0,  "max_rate": 0.0,  "randomize": False},
     "Lent    (discret)":         {"threads": 20,  "timeout": 2.0, "delay": 0.1, "jitter": 0.0,  "max_rate": 0.0,  "randomize": False},
+    # Mode furtif : peu de threads, débit limité à 2 paquets/s, ordre des ports aléatoire
     "Furtif  (anti-détection)":  {"threads": 5,   "timeout": 3.0, "delay": 0.0, "jitter": 0.0,  "max_rate": 2.0,  "randomize": True},
 }
 
 # ── Profils de scan ────────────────────────────────────────────────────────────
+# Associe chaque profil à une spécification de ports (None = l'utilisateur saisit lui-même)
 PROFILS = {
     "Scan rapide   — ports courants (web, SSH, bureau à distance)": "22,80,443,3389,8080",
     "Scan standard — tous les ports réservés (1 à 1024)":          "1-1024",
@@ -27,7 +31,7 @@ PROFILS = {
 
 
 def choisir(question: str, options: list, defaut_idx: int = 0) -> str:
-    """Menu numéroté, retourne le choix."""
+    """Affiche un menu numéroté et retourne l'option choisie par l'utilisateur."""
     print(f"\n  {question}")
     for i, opt in enumerate(options, 1):
         marqueur = "  ← recommandé" if i == defaut_idx + 1 else ""
@@ -35,6 +39,7 @@ def choisir(question: str, options: list, defaut_idx: int = 0) -> str:
     while True:
         rep = input(f"  Votre choix [Entrée = {defaut_idx + 1}] : ").strip()
         if not rep:
+            # Entrée vide → on prend le choix par défaut
             return options[defaut_idx]
         if rep.isdigit() and 1 <= int(rep) <= len(options):
             return options[int(rep) - 1]
@@ -42,22 +47,24 @@ def choisir(question: str, options: list, defaut_idx: int = 0) -> str:
 
 
 def demander(question: str, defaut: str = "") -> str:
-    """Saisie libre avec valeur par défaut."""
+    """Affiche une question et retourne la saisie de l'utilisateur (ou la valeur par défaut)."""
     indication = f" [Entrée = {defaut}]" if defaut else ""
     rep = input(f"  {question}{indication} : ").strip()
-    return rep if rep else defaut
+    return rep if rep else defaut  # si l'utilisateur appuie sur Entrée, utilise le défaut
 
 
 def oui_non(question: str, defaut: bool = True) -> bool:
-    """Question oui/non."""
+    """Pose une question oui/non et retourne True ou False."""
     indication = "[O/n]" if defaut else "[o/N]"
     rep = input(f"  {question} {indication} : ").strip().lower()
     if not rep:
-        return defaut
+        return defaut  # Entrée vide → valeur par défaut
+    # Accepte "o", "oui", "y", "yes" comme réponse positive
     return rep in ("o", "oui", "y", "yes")
 
 
 def separateur(titre: str = "") -> None:
+    """Affiche une ligne de séparation visuelle avec un titre optionnel."""
     if titre:
         print(f"\n  ── {titre} {'─' * (44 - len(titre))}")
     else:
@@ -65,8 +72,11 @@ def separateur(titre: str = "") -> None:
 
 
 def main() -> int:
+    # Détecte si le programme tourne avec les droits root (uid 0)
+    # getattr avec lambda évite l'erreur sur Windows où os.geteuid n'existe pas
     est_root = getattr(os, "geteuid", lambda: 1)() == 0
 
+    # Affichage de l'en-tête avec le mode de scan détecté automatiquement
     print("\n╔══════════════════════════════════════════════╗")
     print("║          Scanner de ports réseau             ║")
     if est_root:
@@ -91,6 +101,7 @@ def main() -> int:
     )
     ports = PROFILS[profil_choisi]
     if ports is None:
+        # Profil "Personnalisé" : l'utilisateur saisit ses propres ports
         print("\n  Exemples : 80  |  22,80,443  |  1-1024  |  22,80-85")
         ports = demander("Entrez les ports à scanner", "22,80,443")
 
@@ -99,8 +110,9 @@ def main() -> int:
     vitesse_choisie = choisir(
         "Choisissez une vitesse :",
         list(VITESSES.keys()),
-        defaut_idx=1,
+        defaut_idx=1,  # "Normal" est recommandé par défaut
     )
+    # Récupère les paramètres techniques associés à la vitesse choisie
     perf = VITESSES[vitesse_choisie]
 
     # ── 4. Options extras ─────────────────────────────────────────────────────
@@ -127,6 +139,7 @@ def main() -> int:
         ],
         defaut_idx=0,
     )
+    # Détermine l'extension du fichier selon le format choisi
     if "HTML" in format_choisi:
         ext = ".html"
     elif ".txt" in format_choisi:
@@ -137,10 +150,12 @@ def main() -> int:
         ext = ".json"
 
     nom_fichier = demander("Nom du fichier de résultats", f"scan_results{ext}")
+    # S'assure que le fichier a bien la bonne extension
     if not nom_fichier.endswith(ext):
         nom_fichier += ext
 
     # ── Récapitulatif ─────────────────────────────────────────────────────────
+    # Le type de scan est déterminé automatiquement selon les droits root
     scan_type_val = "syn" if est_root else "connect"
     threads   = perf["threads"]
     timeout   = perf["timeout"]
@@ -149,6 +164,7 @@ def main() -> int:
     jitter    = perf.get("jitter", 0.0)
     randomize = perf["randomize"]
 
+    # Affiche un résumé de tous les paramètres avant de lancer le scan
     print("\n╔══════════════════════════════════════════════╗")
     print("║               Récapitulatif                  ║")
     print("╠══════════════════════════════════════════════╣")
@@ -166,8 +182,10 @@ def main() -> int:
         return 0
 
     # ── Lancement ─────────────────────────────────────────────────────────────
+    # Importe et appelle main.py avec les paramètres construits par le CLI interactif
     from main import main as run_scan
 
+    # Construit la liste d'arguments comme si l'utilisateur les avait tapés en ligne de commande
     scan_args = [
         "--target",    target,
         "--ports",     ports,
@@ -176,10 +194,11 @@ def main() -> int:
         "--timeout",   str(timeout),
         "--threads",   str(threads),
         "--delay",     str(delay),
-        "--log-level", "WARNING",
+        "--log-level", "WARNING",  # minimise les logs pendant le scan interactif
         "--max-rate",  str(max_rate),
         "--jitter",    str(jitter),
     ]
+    # Ajoute les flags booléens uniquement s'ils sont activés
     if randomize:
         scan_args.append("--randomize")
     if discover:
