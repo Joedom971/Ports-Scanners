@@ -137,6 +137,57 @@ def grab_banner(ip: str, port: int, timeout: float = 2.0) -> str:
         return ""
 
 
+# Requêtes spécifiques envoyées pour identifier la version du service
+_SERVICE_PROBES: Dict[str, bytes] = {
+    "http":   b"HEAD / HTTP/1.0\r\nHost: localhost\r\n\r\n",
+    "https":  b"HEAD / HTTP/1.0\r\nHost: localhost\r\n\r\n",
+    "ftp":    b"",    # le serveur envoie la bannière dès la connexion
+    "smtp":   b"EHLO probe\r\n",
+    "ssh":    b"",    # idem
+    "pop3":   b"",
+    "imap":   b"",
+    "telnet": b"",
+}
+
+
+def detect_service_version(ip: str, port: int, service_name: str, timeout: float = 2.0) -> str:
+    """Envoie un probe spécifique au protocole pour identifier la version du service.
+
+    Va au-delà du simple banner grab en utilisant une requête adaptée au protocole
+    attendu (HTTP HEAD, SMTP EHLO, etc.) pour extraire le nom et la version du logiciel.
+
+    Args:
+        service_name: nom retourné par get_service_name() (ex. "http", "ssh", "smtp").
+
+    Returns:
+        Chaîne de version extraite (ex. "nginx/1.18.0", "SSH-2.0-OpenSSH_8.9"),
+        ou "" si la connexion échoue ou que la réponse n'est pas exploitable.
+    """
+    probe = _SERVICE_PROBES.get(service_name.lower(), b"\r\n")
+
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.settimeout(timeout)
+            if sock.connect_ex((ip, port)) != 0:
+                return ""
+            if probe:
+                sock.sendall(probe)
+            data = sock.recv(1024)
+            response = data.decode(errors="ignore").strip()
+            if not response:
+                return ""
+            # Pour HTTP : cherche l'en-tête "Server:" qui contient le nom du serveur web
+            if service_name.lower() in ("http", "https"):
+                for line in response.splitlines():
+                    if line.lower().startswith("server:"):
+                        return line.split(":", 1)[1].strip()
+            # Pour SSH, FTP, SMTP et les autres : la première ligne contient l'identification
+            lines = response.splitlines()
+            return lines[0] if lines else ""
+    except (socket.timeout, OSError):
+        return ""
+
+
 def scan_range_threaded(
     ip: str,
     ports: List[int],
