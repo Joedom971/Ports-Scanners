@@ -228,16 +228,52 @@ def test_detect_firewall_closed_on_rst(monkeypatch):
     import scanner, os
     monkeypatch.setattr(scanner, "SCAPY_AVAILABLE", True)
     monkeypatch.setattr(os, "geteuid", lambda: 0)
-    # Simulate a response with RST flag (0x04)
+    # Create sentinel classes to use as identity markers.
+    # They accept **kwargs so that TCP(dport=..., flags=...) and IP(dst=...) don't raise TypeError.
+    class FakeTCPClass:
+        def __init__(self, **kwargs): pass
+        def __truediv__(self, other): return self
+    class FakeICMPClass:
+        def __init__(self, **kwargs): pass
+    class FakeIPClass:
+        def __init__(self, **kwargs): pass
+        def __truediv__(self, other): return self
+    monkeypatch.setattr(scanner, "TCP", FakeTCPClass, raising=False)
+    monkeypatch.setattr(scanner, "ICMP", FakeICMPClass, raising=False)
+    monkeypatch.setattr(scanner, "IP", FakeIPClass, raising=False)
     class FakeResp:
         def haslayer(self, layer):
-            if layer.__name__ == "TCP": return True
-            if layer.__name__ == "ICMP": return False
-            return False
+            return layer is FakeTCPClass
         def __getitem__(self, layer):
-            class FakeTCP:
+            class FakeTCPInst:
                 flags = 0x04  # RST
-            return FakeTCP()
+            return FakeTCPInst()
     monkeypatch.setattr("scanner.sr1", lambda *a, **kw: FakeResp())
     result = scanner.detect_firewall("192.0.2.1", 80, timeout=0.1)
     assert result == "closed"
+
+
+def test_detect_firewall_active_on_icmp(monkeypatch):
+    import scanner, os
+    monkeypatch.setattr(scanner, "SCAPY_AVAILABLE", True)
+    monkeypatch.setattr(os, "geteuid", lambda: 0)
+    class FakeTCPClass:
+        def __init__(self, **kwargs): pass
+        def __truediv__(self, other): return self
+    class FakeICMPClass:
+        def __init__(self, **kwargs): pass
+    class FakeIPClass:
+        def __init__(self, **kwargs): pass
+        def __truediv__(self, other): return self
+    monkeypatch.setattr(scanner, "TCP", FakeTCPClass, raising=False)
+    monkeypatch.setattr(scanner, "ICMP", FakeICMPClass, raising=False)
+    monkeypatch.setattr(scanner, "IP", FakeIPClass, raising=False)
+    class FakeResp:
+        def haslayer(self, layer):
+            # No TCP layer, but has ICMP (firewall sent ICMP port-unreachable)
+            return layer is FakeICMPClass
+        def __getitem__(self, layer):
+            return None
+    monkeypatch.setattr("scanner.sr1", lambda *a, **kw: FakeResp())
+    result = scanner.detect_firewall("192.0.2.1", 80, timeout=0.1)
+    assert result == "filtered-active"
