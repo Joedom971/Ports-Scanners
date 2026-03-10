@@ -1,6 +1,7 @@
 """Découverte d'hôtes : balayage ARP (scapy) avec repli ICMP (ping)."""
 
 import ipaddress
+import platform
 import subprocess
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List
@@ -58,19 +59,36 @@ def _icmp_sweep(network: str, timeout: float) -> List[str]:
         # Ce n'est pas un CIDR valide → on traite comme une IP unique
         hosts = [network]
 
-    # Convertit le timeout en millisecondes pour la commande ping
-    timeout_ms = max(1, int(timeout * 1000))
+    # Détecte le système d'exploitation pour construire la commande ping adaptée
+    system = platform.system()  # "Darwin", "Linux" ou "Windows"
     active: List[str] = []
 
     def ping(ip: str):
         """Lance un ping unique vers une IP et retourne l'IP si elle répond."""
-        result = subprocess.run(
-            ["ping", "-c", "1", "-W", str(timeout_ms), ip],  # -c 1 = 1 seul paquet
-            stdout=subprocess.DEVNULL,  # ignore la sortie standard
-            stderr=subprocess.DEVNULL,  # ignore les erreurs
-        )
-        # returncode == 0 signifie que le ping a reçu une réponse
-        return ip if result.returncode == 0 else None
+        if system == "Windows":
+            # Windows : -n = nombre de paquets, -w = timeout en millisecondes
+            timeout_ms = max(1, int(timeout * 1000))
+            cmd = ["ping", "-n", "1", "-w", str(timeout_ms), ip]
+        elif system == "Darwin":
+            # macOS : -c = nombre de paquets, -W = timeout en millisecondes
+            timeout_ms = max(1, int(timeout * 1000))
+            cmd = ["ping", "-c", "1", "-W", str(timeout_ms), ip]
+        else:
+            # Linux : -c = nombre de paquets, -W = timeout en secondes (entier)
+            timeout_s = max(1, int(timeout))
+            cmd = ["ping", "-c", "1", "-W", str(timeout_s), ip]
+
+        try:
+            result = subprocess.run(
+                cmd,  # -c 1 = 1 seul paquet
+                stdout=subprocess.DEVNULL,  # ignore la sortie standard
+                stderr=subprocess.DEVNULL,  # ignore les erreurs
+                timeout=timeout + 2,
+            )
+            # returncode == 0 signifie que le ping a reçu une réponse
+            return ip if result.returncode == 0 else None
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            return None
 
     # Lance tous les pings en parallèle pour aller beaucoup plus vite
     with ThreadPoolExecutor(max_workers=100) as executor:
