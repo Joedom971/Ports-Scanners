@@ -203,3 +203,41 @@ def test_detect_service_version_returns_empty_on_connection_failure(monkeypatch)
     monkeypatch.setattr(socket, "socket", lambda *a, **kw: FakeSocket())
     result = scanner.detect_service_version("127.0.0.1", 9999, "unknown", timeout=0.2)
     assert result == ""
+
+
+def test_detect_firewall_returns_valid_status():
+    from scanner import detect_firewall
+    result = detect_firewall("127.0.0.1", 9999, timeout=0.3)
+    assert result in ("open", "closed", "filtered-silent", "filtered-active", "filtered")
+
+def test_detect_firewall_without_scapy(monkeypatch):
+    import scanner
+    monkeypatch.setattr(scanner, "SCAPY_AVAILABLE", False)
+    result = scanner.detect_firewall("127.0.0.1", 9999, timeout=0.3)
+    assert result in ("open", "closed", "filtered")
+
+def test_detect_firewall_silent_on_no_response(monkeypatch):
+    import scanner, os
+    monkeypatch.setattr(scanner, "SCAPY_AVAILABLE", True)
+    monkeypatch.setattr(os, "geteuid", lambda: 0)
+    monkeypatch.setattr("scanner.sr1", lambda *a, **kw: None)
+    result = scanner.detect_firewall("192.0.2.1", 80, timeout=0.1)
+    assert result == "filtered-silent"
+
+def test_detect_firewall_closed_on_rst(monkeypatch):
+    import scanner, os
+    monkeypatch.setattr(scanner, "SCAPY_AVAILABLE", True)
+    monkeypatch.setattr(os, "geteuid", lambda: 0)
+    # Simulate a response with RST flag (0x04)
+    class FakeResp:
+        def haslayer(self, layer):
+            if layer.__name__ == "TCP": return True
+            if layer.__name__ == "ICMP": return False
+            return False
+        def __getitem__(self, layer):
+            class FakeTCP:
+                flags = 0x04  # RST
+            return FakeTCP()
+    monkeypatch.setattr("scanner.sr1", lambda *a, **kw: FakeResp())
+    result = scanner.detect_firewall("192.0.2.1", 80, timeout=0.1)
+    assert result == "closed"

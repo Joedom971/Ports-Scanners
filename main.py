@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from scanner import (
+    detect_firewall,
     detect_os,
     detect_service_version,
     grab_banner,
@@ -152,6 +153,8 @@ def main(args: Optional[List[str]] = None) -> int:
                         help="Tenter de détecter le système d'exploitation (nécessite scapy + sudo)")
     parser.add_argument("--version-detect", action="store_true",
                         help="Détecter la version des services ouverts (probe actif par protocole)")
+    parser.add_argument("--firewall-detect", action="store_true",
+                        help="Distinguer les types de filtrage pare-feu (nécessite scapy + sudo)")
 
     parsed = parser.parse_args(args=args)
 
@@ -269,18 +272,23 @@ def main(args: Optional[List[str]] = None) -> int:
             version = ""
             if parsed.version_detect and status == "open":
                 version = detect_service_version(target, port, service, timeout=parsed.timeout)
+            firewall = ""
+            if parsed.firewall_detect and status == "filtered":
+                firewall = detect_firewall(target, port, timeout=parsed.timeout)
             results[port] = {
                 "status": status,
                 "service": service,
                 "banner": banner,
                 "os": os_guess,
                 "version": version,
+                "firewall": firewall,
             }
 
         # Affichage des résultats dans le terminal, triés par numéro de port
         for port, info in sorted(results.items()):
             version_str = f"  [{info.get('version')}]" if info.get("version") else ""
-            print(f"  {port:5d}  {info['status']:<10} {info['service']:<15} {info['banner']}{version_str}")
+            fw_str = f" ({info.get('firewall')})" if info.get("firewall") else ""
+            print(f"  {port:5d}  {info['status']:<10}{fw_str:<22} {info['service']:<15} {info['banner']}{version_str}")
 
         # Calcul et affichage des statistiques globales
         counts = {"open": 0, "closed": 0, "filtered": 0}

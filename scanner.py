@@ -11,6 +11,7 @@ Fonctions :
   - grab_banner(ip, port, timeout)                                -> bannière du service
   - detect_service_version(ip, port, service_name, timeout)       -> version du service
   - detect_os(ip, timeout)                                        -> système d'exploitation estimé
+  - detect_firewall(ip, port, timeout)                            -> type de filtrage pare-feu
 
 Valeurs de statut :
   - "open"     (ouvert)
@@ -31,7 +32,7 @@ from typing import Callable, Dict, List
 # Tentative d'import de scapy (librairie pour manipuler des paquets réseau bruts).
 # Si scapy n'est pas installé, on désactive silencieusement le SYN scan.
 try:
-    from scapy.all import IP, TCP, sr1, conf as scapy_conf
+    from scapy.all import IP, TCP, ICMP, sr1, conf as scapy_conf
     scapy_conf.verb = 0  # désactive les messages de log de scapy
     SCAPY_AVAILABLE = True
 except ImportError:
@@ -334,6 +335,48 @@ def detect_os(ip: str, timeout: float = 1.0) -> str:
             else:
                 return "Network device"
     return "unknown"
+
+
+def detect_firewall(ip: str, port: int, timeout: float = 1.0) -> str:
+    """Distingue les différents types de filtrage réseau sur un port.
+
+    Analyse la réponse à un paquet SYN pour déterminer si un pare-feu est actif :
+      - SYN-ACK reçu    → "open"            (port ouvert)
+      - RST reçu        → "closed"          (port fermé, pas de pare-feu)
+      - ICMP reçu       → "filtered-active" (pare-feu REJECT — envoie un message d'erreur)
+      - Timeout         → "filtered-silent" (pare-feu DROP — silence total)
+
+    Sans scapy ou sans sudo, utilise scan_port_connect comme repli (retourne
+    "open", "closed" ou "filtered" sans distinguer les types de filtrage).
+
+    Returns:
+        "open" | "closed" | "filtered-silent" | "filtered-active" | "filtered"
+    """
+    import os as _os
+
+    if not SCAPY_AVAILABLE or _os.geteuid() != 0:
+        # Repli sur TCP connect standard si scapy/sudo indisponible
+        return scan_port_connect(ip, port, timeout=timeout)
+
+    pkt = IP(dst=ip) / TCP(dport=port, flags="S")
+    resp = sr1(pkt, timeout=timeout)
+
+    if resp is None:
+        # Aucune réponse : le pare-feu DROP silencieusement les paquets
+        return "filtered-silent"
+
+    if resp.haslayer(TCP):
+        flags = int(resp[TCP].flags)
+        if flags & 0x12 == 0x12:
+            return "open"      # SYN-ACK → port ouvert
+        if flags & 0x04:
+            return "closed"    # RST → port fermé, pas de pare-feu devant
+
+    if resp.haslayer(ICMP):
+        # ICMP port-unreachable : le pare-feu REJECT (rejette activement)
+        return "filtered-active"
+
+    return "filtered-silent"
 
 
 if __name__ == "__main__":

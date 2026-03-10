@@ -30,7 +30,8 @@ def _write_txt(results: Dict[int, dict], path: Path) -> None:
         # sorted() trie les ports par ordre croissant
         for port, info in sorted(results.items()):
             version_str = f"  [{info['version']}]" if info.get("version") else ""
-            f.write(f"{port:5d}: {info['status']}  {info['service']}  {info['banner']}{version_str}\n")
+            fw_str = f" ({info['firewall']})" if info.get("firewall") else ""
+            f.write(f"{port:5d}: {info['status']}{fw_str}  {info['service']}  {info['banner']}{version_str}\n")
 
 
 def _write_json(results: Dict[int, dict], path: Path) -> None:
@@ -44,11 +45,12 @@ def _write_csv(results: Dict[int, dict], path: Path) -> None:
     """Écrit les résultats en CSV (compatible Excel/tableur)."""
     with path.open("w", encoding="utf-8", newline="") as f:
         # DictWriter génère automatiquement les en-têtes et les lignes
-        writer = csv.DictWriter(f, fieldnames=["port", "status", "service", "banner", "version"])
+        writer = csv.DictWriter(f, fieldnames=["port", "status", "service", "banner", "version", "firewall"])
         writer.writeheader()
         for port, info in sorted(results.items()):
             writer.writerow({"port": port, "status": info["status"], "service": info["service"],
-                             "banner": info["banner"], "version": info.get("version", "")})
+                             "banner": info["banner"], "version": info.get("version", ""),
+                             "firewall": info.get("firewall", "")})
 
 
 def _write_html(results: Dict[int, dict], path: Path, target: str, scan_type: str) -> None:
@@ -79,6 +81,7 @@ def _write_html(results: Dict[int, dict], path: Path, target: str, scan_type: st
             f"<td style='color:{color};font-weight:bold'>{html_lib.escape(info['status'])}</td>"
             f"<td>{html_lib.escape(info['banner']) if info['banner'] else '—'}</td>"
             f"<td>{html_lib.escape(info.get('version', '')) or '—'}</td>"
+            f"<td>{html_lib.escape(info.get('firewall', '')) or '—'}</td>"
             f"</tr>\n"
         )
 
@@ -106,7 +109,7 @@ def _write_html(results: Dict[int, dict], path: Path, target: str, scan_type: st
   <span class="stat-filtered">filtered: {counts['filtered']}</span>
 </div>
 <table>
-<tr><th>Port</th><th>Service</th><th>Statut</th><th>Banner</th><th>Version</th></tr>
+<tr><th>Port</th><th>Service</th><th>Statut</th><th>Banner</th><th>Version</th><th>Firewall</th></tr>
 {rows}
 </table>
 </body>
