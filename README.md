@@ -132,13 +132,67 @@ Framework de tests automatisés. Permet de vérifier que chaque fonction du proj
 
 ---
 
+## Options avancées
+
+### Découverte d'hôtes — `--discover`
+
+Avant de scanner les ports, détecte quelles machines sont actives sur le réseau.
+
+```bash
+python main.py --target 192.168.1.0/24 --discover --ports 22,80
+```
+
+Sans `--discover`, le scanner tente directement de se connecter aux ports de la cible. Avec `--discover`, il envoie d'abord des requêtes ARP (ou des pings ICMP) pour lister les machines qui répondent, puis scanne uniquement celles-ci. Utile sur un sous-réseau `/24` pour ne pas perdre de temps sur des IPs éteintes.
+
+---
+
+### Bannières de services — `--banner`
+
+Lit la première réponse envoyée par chaque service ouvert.
+
+```bash
+python main.py --target 192.168.1.1 --ports 22,80,443 --banner
+```
+
+Quand un port est ouvert, le service derrière affiche souvent une ligne d'identification au moment de la connexion — c'est la **bannière**. Elle peut contenir le nom du logiciel et sa version (`SSH-2.0-OpenSSH_8.9`, `Apache/2.4.54`). Ces informations permettent d'identifier les logiciels installés et de détecter des versions obsolètes.
+
+---
+
+### Threads — `--threads`
+
+Contrôle le nombre de connexions lancées en parallèle.
+
+```bash
+python main.py --target 192.168.1.1 --ports 1-1024 --threads 200
+```
+
+Par défaut : 100 threads. Augmenter accélère le scan mais génère plus de trafic simultané (plus détectable, plus de charge sur la cible). Diminuer ralentit mais est plus discret. Sur un réseau local rapide, 400 threads est raisonnable. Sur internet, 50 est plus sage.
+
+---
+
+### Timeout — `--timeout`
+
+Délai maximum d'attente par port, en secondes.
+
+```bash
+python main.py --target 192.168.1.1 --ports 1-1024 --timeout 0.5
+```
+
+Par défaut : 1 seconde. Si la cible ne répond pas dans ce délai, le port est marqué `filtered`. Réduire le timeout accélère le scan mais risque de classer des ports `open` ou `closed` comme `filtered` si la connexion est lente. Sur un réseau local, 0.3 s suffit. Sur internet, garder 1 à 2 s.
+
+---
+
 ## Les fonctionnalités de furtivité
 
 Pour réduire la détection par les systèmes de surveillance réseau (IDS) :
 
-**`--randomize`** — mélange l'ordre des ports avant le scan. Un scan séquentiel (1, 2, 3, 4...) est une signature immédiatement reconnaissable par un IDS.
+**`--randomize`** — mélange l'ordre des ports avant le scan. Un scan séquentiel (1, 2, 3, 4...) est une signature immédiatement reconnaissable par un IDS. Avec `--randomize`, l'ordre est imprévisible.
 
-**`--max-rate 2`** — limite le débit à 2 paquets par seconde via un verrou global partagé entre tous les threads. Sans ça, 100 threads enverraient 100 paquets simultanément.
+**`--delay 0.1`** — ajoute une pause fixe entre chaque port scanné. Simple et prévisible, mais réduit la charge. À utiliser quand on veut juste ralentir sans complexité. Exemple : `--delay 0.1` = 100 ms entre chaque port.
+
+**`--max-rate 2`** — limite le débit global à N paquets par seconde via un verrou partagé entre tous les threads. Plus précis que `--delay` car il contrôle le rythme réel d'envoi indépendamment du nombre de threads. `--max-rate 2` = maximum 2 paquets par seconde, peu importe combien de threads tournent.
+
+> **Différence entre `--delay` et `--max-rate` :** `--delay` ajoute une pause dans chaque thread individuellement — avec 100 threads et `--delay 0.1`, on envoie quand même 100 paquets toutes les 0.1 s. `--max-rate` sérialise tous les envois globalement — avec `--max-rate 2`, on envoie exactement 2 paquets par seconde au total.
 
 **`--jitter 0.3`** — ajoute un délai aléatoire entre 0 et 0.3 secondes. Un délai fixe produit un rythme régulier détectable ; un délai variable ressemble plus à du trafic humain.
 
