@@ -78,10 +78,10 @@ def valider_fichier_sortie(chemin: str) -> Path:
     chemin = chemin.strip()
     if not chemin:
         raise ValueError("Le nom du fichier de sortie ne peut pas être vide.")
-    extensions_valides = {".txt", ".json", ".csv", ".html"}
+    extensions_valides = {".txt", ".json", ".csv", ".html", ".xml"}
     path = Path(chemin)
     if path.suffix.lower() not in extensions_valides:
-        raise ValueError(f"Extension invalide : '{path.suffix}'. Utilisez .txt, .json, .csv ou .html.")
+        raise ValueError(f"Extension invalide : '{path.suffix}'. Utilisez .txt, .json, .csv, .html ou .xml.")
     # Bloquer la traversée de répertoire dans les chemins relatifs (ex. ../../etc/passwd)
     if not path.is_absolute():
         try:
