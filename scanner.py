@@ -243,6 +243,41 @@ def scan_port_syn(ip: str, port: int, timeout: float = 1.0) -> str:
     return "filtered"
 
 
+def detect_os(ip: str, timeout: float = 1.0) -> str:
+    """Tente de détecter le système d'exploitation via TCP fingerprinting.
+
+    Analyse le TTL de la réponse SYN-ACK pour estimer l'OS.
+    Nécessite scapy et sudo (raw sockets).
+
+    Returns:
+        "Linux/Unix"     — TTL <= 64
+        "Windows"        — TTL <= 128
+        "Network device" — TTL > 128
+        "unknown"        — pas de réponse ou scapy/sudo indisponible
+    """
+    if not SCAPY_AVAILABLE:
+        return "unknown"
+
+    import os as _os
+    if _os.geteuid() != 0:
+        return "unknown"
+
+    # Sonde les ports courants pour obtenir une réponse SYN-ACK
+    for probe_port in (80, 443, 22):
+        pkt = IP(dst=ip) / TCP(dport=probe_port, flags="S")
+        resp = sr1(pkt, timeout=timeout)
+        if resp is not None and resp.haslayer(IP) and resp.haslayer(TCP):
+            ttl = resp[IP].ttl
+            # Les OS initialisent le TTL à une valeur fixe ; on arrondit au palier connu
+            if ttl <= 64:
+                return "Linux/Unix"
+            elif ttl <= 128:
+                return "Windows"
+            else:
+                return "Network device"
+    return "unknown"
+
+
 if __name__ == "__main__":
     # Vérification rapide
     print(scan_port_connect("127.0.0.1", 80))

@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from scanner import (
+    detect_os,
     grab_banner,
     get_service_name,
     resoudre_cible,
@@ -146,6 +147,8 @@ def main(args: Optional[List[str]] = None) -> int:
                         help="Débit max en paquets/seconde (0 = illimité)")
     parser.add_argument("--jitter", type=float, default=0.0,
                         help="Variation aléatoire du délai en secondes (0 = désactivé)")
+    parser.add_argument("--os-detect", action="store_true",
+                        help="Tenter de détecter le système d'exploitation (nécessite scapy + sudo)")
 
     parsed = parser.parse_args(args=args)
 
@@ -243,6 +246,10 @@ def main(args: Optional[List[str]] = None) -> int:
             jitter=parsed.jitter,
         )
 
+        os_guess = detect_os(target, timeout=parsed.timeout) if parsed.os_detect else ""
+        if parsed.os_detect and os_guess not in ("unknown", ""):
+            print(f"  OS détecté : {os_guess}")
+
         # Enrichissement : ajoute le nom du service et la bannière à chaque résultat brut
         results: Dict[int, dict] = {}
         # tqdm affiche une barre de progression si disponible, sinon itération normale
@@ -253,7 +260,7 @@ def main(args: Optional[List[str]] = None) -> int:
             # Banner grabbing uniquement sur les ports ouverts (inutile sur closed/filtered)
             if parsed.banner and status == "open":
                 banner = grab_banner(target, port, timeout=parsed.timeout)
-            results[port] = {"status": status, "service": service, "banner": banner}
+            results[port] = {"status": status, "service": service, "banner": banner, "os": os_guess}
 
         # Affichage des résultats dans le terminal, triés par numéro de port
         for port, info in sorted(results.items()):

@@ -138,3 +138,22 @@ def test_resoudre_cible_ne_plante_pas_sur_cidr():
     except ValueError:
         pass
     assert is_cidr is True  # le CIDR doit être détecté et resoudre_cible ignoré
+
+def test_detect_os_returns_known_os_string():
+    from scanner import detect_os
+    result = detect_os("8.8.8.8", timeout=1.0)
+    assert isinstance(result, str)
+    assert result in ("Linux/Unix", "Windows", "Network device", "unknown")
+
+def test_detect_os_returns_unknown_without_scapy(monkeypatch):
+    import scanner
+    monkeypatch.setattr(scanner, "SCAPY_AVAILABLE", False)
+    result = scanner.detect_os("127.0.0.1", timeout=0.5)
+    assert result == "unknown"
+
+def test_detect_os_returns_unknown_on_no_response(monkeypatch):
+    import scanner
+    monkeypatch.setattr(scanner, "SCAPY_AVAILABLE", True)
+    monkeypatch.setattr("scanner.sr1", lambda *a, **kw: None)
+    result = scanner.detect_os("192.0.2.1", timeout=0.1)
+    assert result == "unknown"
