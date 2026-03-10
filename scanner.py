@@ -38,6 +38,12 @@ try:
 except ImportError:
     SCAPY_AVAILABLE = False
 
+# Codes d'erreur "connexion refusée" selon la plateforme
+# ECONNREFUSED = 111 sur Linux/macOS, WSAECONNREFUSED = 10061 sur Windows
+_ECONNREFUSED_CODES = {errno.ECONNREFUSED}
+if hasattr(errno, "WSAECONNREFUSED"):
+    _ECONNREFUSED_CODES.add(errno.WSAECONNREFUSED)
+
 
 def scan_port_connect(ip: str, port: int, timeout: float = 1.0) -> str:
     """Scanne un seul port TCP via connect().
@@ -66,7 +72,7 @@ def scan_port_connect(ip: str, port: int, timeout: float = 1.0) -> str:
         if err == 0:
             return "open"  # connexion TCP établie → port ouvert
 
-        if err in (errno.ECONNREFUSED,):
+        if err in _ECONNREFUSED_CODES:
             # ECONNREFUSED = la machine a répondu RST (port fermé mais hôte joignable)
             return "closed"
 
@@ -274,7 +280,7 @@ def scan_port_syn(ip: str, port: int, timeout: float = 1.0) -> str:
 
     import os
     # Les raw packets nécessitent les droits root (uid 0)
-    if os.geteuid() != 0:
+    if getattr(os, "geteuid", lambda: 1)() != 0:
         import logging
         logging.warning("SYN scan nécessite sudo. Retourne filtered.")
         return "filtered"
@@ -318,7 +324,7 @@ def detect_os(ip: str, timeout: float = 1.0) -> str:
         return "unknown"
 
     import os as _os
-    if _os.geteuid() != 0:
+    if getattr(_os, "geteuid", lambda: 1)() != 0:
         return "unknown"
 
     # Sonde les ports courants pour obtenir une réponse SYN-ACK
@@ -358,7 +364,7 @@ def detect_firewall(ip: str, port: int, timeout: float = 1.0) -> str:
     """
     import os as _os
 
-    if not SCAPY_AVAILABLE or _os.geteuid() != 0:
+    if not SCAPY_AVAILABLE or getattr(_os, "geteuid", lambda: 1)() != 0:
         # Repli sur TCP connect standard si scapy/sudo indisponible
         return scan_port_connect(ip, port, timeout=timeout)
 

@@ -34,6 +34,9 @@ def test_write_csv(tmp_path):
     rows = list(csv.DictReader(out.open()))
     ports = [int(r["port"]) for r in rows]
     assert 80 in ports and 22 in ports
+    assert "os" in rows[0], "os field must be present in CSV headers"
+    row_22 = next(r for r in rows if int(r["port"]) == 22)
+    assert row_22["os"] == "Linux/Unix"
 
 def test_write_html(tmp_path):
     out = tmp_path / "scan.html"

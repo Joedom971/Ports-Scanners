@@ -48,12 +48,18 @@ def _write_csv(results: Dict[int, dict], path: Path) -> None:
     """Écrit les résultats en CSV (compatible Excel/tableur)."""
     with path.open("w", encoding="utf-8", newline="") as f:
         # DictWriter génère automatiquement les en-têtes et les lignes
-        writer = csv.DictWriter(f, fieldnames=["port", "status", "service", "banner", "version", "firewall"])
+        writer = csv.DictWriter(f, fieldnames=["port", "status", "service", "banner", "os", "version", "firewall"])
         writer.writeheader()
         for port, info in sorted(results.items()):
-            writer.writerow({"port": port, "status": info["status"], "service": info["service"],
-                             "banner": info["banner"], "version": info.get("version", ""),
-                             "firewall": info.get("firewall", "")})
+            writer.writerow({
+                "port": port,
+                "status": info["status"],
+                "service": info["service"],
+                "banner": info["banner"],
+                "os": info.get("os", ""),
+                "version": info.get("version", ""),
+                "firewall": info.get("firewall", ""),
+            })
 
 
 def _write_xml(results: Dict[int, dict], path: Path, target: str, scan_type: str) -> None:
