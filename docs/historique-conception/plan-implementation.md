@@ -16,7 +16,7 @@
 | 5 | `scan_port_syn` dans `scanner.py` | ✅ |
 | 6 | `discovery.py` (ARP + ICMP) | ✅ |
 | 7 | Réécriture `main.py` + `tests/test_main.py` | ✅ |
-| 8 | `requirements.txt` + `CLAUDE.md` | ✅ |
+| 8 | `requirements.txt` | ✅ |
 
 **Total : 48 tests, tous passants.**
 
@@ -99,7 +99,6 @@ Nouveaux arguments ajoutés :
 ## Tâche 8 — Fichiers de configuration
 
 - `requirements.txt` mis à jour : `tqdm`, `scapy`, `pytest`
-- `CLAUDE.md` mis à jour : nouveaux modules, commandes, profils CLI
 
 ---
 
