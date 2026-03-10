@@ -69,9 +69,9 @@ Port_scanner_Reseau/
 ├── cli.py          → Interface interactive pas-à-pas (pour débuter)
 ├── main.py         → Interface ligne de commande complète
 ├── scanner.py      → Moteur de scan (la logique principale)
-├── output.py       → Export des résultats (txt, json, csv, html)
+├── output.py       → Export des résultats (txt, json, csv, html, xml)
 ├── discovery.py    → Découverte des machines actives sur un réseau
-├── tests/          → Tests automatisés (57 tests)
+├── tests/          → Tests automatisés (74 tests)
 └── documentation/  → Rapports de conception, tests, éthique
 ```
 
@@ -128,7 +128,7 @@ Scapy est aussi utilisée pour le balayage ARP lors de la découverte d'hôtes s
 Affiche une barre de progression dans le terminal pendant le scan. Purement cosmétique — si absent, le scanner fonctionne normalement sans barre.
 
 **`pytest`**
-Framework de tests automatisés. Permet de vérifier que chaque fonction du projet se comporte correctement avec 57 tests unitaires.
+Framework de tests automatisés. Permet de vérifier que chaque fonction du projet se comporte correctement avec 74 tests unitaires.
 
 ---
 
@@ -155,6 +155,42 @@ python main.py --target 192.168.1.1 --ports 22,80,443 --banner
 ```
 
 Quand un port est ouvert, le service derrière affiche souvent une ligne d'identification au moment de la connexion — c'est la **bannière**. Elle peut contenir le nom du logiciel et sa version (`SSH-2.0-OpenSSH_8.9`, `Apache/2.4.54`). Ces informations permettent d'identifier les logiciels installés et de détecter des versions obsolètes.
+
+---
+
+### Détection de version — `--version-detect`
+
+Identifie la version exacte du logiciel qui tourne derrière chaque port ouvert.
+
+```bash
+python main.py --target 192.168.1.1 --ports 22,80,443 --version-detect
+```
+
+Pour chaque port ouvert, le scanner envoie une requête adaptée au protocole détecté (HTTP HEAD pour les serveurs web, EHLO pour SMTP, etc.) et extrait la version depuis la réponse. Exemple : un port 80 ouvert peut révéler `Apache/2.4.54` ou `nginx/1.18.0`. Fonctionne sans sudo.
+
+---
+
+### Détection d'OS — `--os-detect`
+
+Tente de deviner le système d'exploitation de la machine cible.
+
+```bash
+sudo $(pwd)/.venv/bin/python main.py --target 192.168.1.1 --ports 22,80 --os-detect
+```
+
+La technique utilisée est le **TTL fingerprinting** : chaque OS répond avec une valeur TTL différente dans les paquets réseau (Linux/Unix ≤ 64, Windows ≤ 128, équipements réseau > 128). Nécessite `scapy` et `sudo` car il envoie des paquets bruts.
+
+---
+
+### Détection de pare-feu — `--firewall-detect`
+
+Distingue les ports silencieusement bloqués (DROP) des ports activement rejetés (REJECT).
+
+```bash
+sudo $(pwd)/.venv/bin/python main.py --target 192.168.1.1 --ports 1-1024 --firewall-detect
+```
+
+Un port `filtered` classique peut signifier deux choses très différentes : soit le pare-feu ignore silencieusement le paquet (`filtered-silent` — règle DROP), soit il répond par un message ICMP "destination unreachable" (`filtered-active` — règle REJECT). Cette distinction aide à comprendre la configuration du pare-feu. Nécessite `scapy` et `sudo`.
 
 ---
 

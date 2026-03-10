@@ -229,16 +229,16 @@ python main.py --help
 |--------|-------------|---------|
 | `--target` | IP, hostname ou réseau CIDR | `192.168.1.1` ou `192.168.1.0/24` |
 | `--ports` | Ports à scanner | `22,80,443` ou `1-1024` ou `22,80-90` |
-| `--output` | Fichier de résultats | `scan.html`, `scan.xml`, `scan.json` |
+| `--output` | Fichier de résultats | `--output scan.html` ou `--output scan.xml` |
 | `--scan-type` | `connect` (défaut) ou `syn` (sudo requis) | `--scan-type syn` |
 | `--threads` | Connexions parallèles (défaut : 100) | `--threads 200` |
 | `--timeout` | Délai par port en secondes (défaut : 1.0) | `--timeout 0.5` |
-| `--banner` | Lire la bannière des services ouverts | |
-| `--version-detect` | Détecter la version des services ouverts | |
-| `--os-detect` | Détecter l'OS de la cible (sudo requis) | |
-| `--firewall-detect` | Détecter le type de filtrage (sudo requis) | |
-| `--discover` | Découvrir les hôtes actifs avant le scan | |
-| `--randomize` | Mélanger l'ordre des ports | |
+| `--banner` | Lire la bannière des services ouverts | `--ports 22,80 --banner` |
+| `--version-detect` | Détecter la version des services ouverts | `--ports 22,80 --version-detect` |
+| `--os-detect` | Détecter l'OS de la cible (sudo requis) | `--ports 22,80 --os-detect` |
+| `--firewall-detect` | Détecter le type de filtrage (sudo requis) | `--ports 1-1024 --firewall-detect` |
+| `--discover` | Découvrir les hôtes actifs avant le scan | `--target 192.168.1.0/24 --discover` |
+| `--randomize` | Mélanger l'ordre des ports | `--ports 1-1024 --randomize` |
 | `--max-rate` | Débit max en paquets/seconde | `--max-rate 2` |
 | `--delay` | Pause fixe entre chaque port | `--delay 0.1` |
 | `--jitter` | Délai aléatoire en secondes | `--jitter 0.3` |
