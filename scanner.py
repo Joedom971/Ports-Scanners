@@ -9,6 +9,8 @@ Fonctions :
   - scan_range_threaded(ip, ports, scan_fn, timeout, delay, ...)  -> dict[port, statut]
   - get_service_name(port)                                        -> nom du service
   - grab_banner(ip, port, timeout)                                -> bannière du service
+  - detect_service_version(ip, port, service_name, timeout)       -> version du service
+  - detect_os(ip, timeout)                                        -> système d'exploitation estimé
 
 Valeurs de statut :
   - "open"     (ouvert)
@@ -140,7 +142,6 @@ def grab_banner(ip: str, port: int, timeout: float = 2.0) -> str:
 # Requêtes spécifiques envoyées pour identifier la version du service
 _SERVICE_PROBES: Dict[str, bytes] = {
     "http":   b"HEAD / HTTP/1.0\r\nHost: localhost\r\n\r\n",
-    "https":  b"HEAD / HTTP/1.0\r\nHost: localhost\r\n\r\n",
     "ftp":    b"",    # le serveur envoie la bannière dès la connexion
     "smtp":   b"EHLO probe\r\n",
     "ssh":    b"",    # idem
@@ -162,6 +163,8 @@ def detect_service_version(ip: str, port: int, service_name: str, timeout: float
     Returns:
         Chaîne de version extraite (ex. "nginx/1.18.0", "SSH-2.0-OpenSSH_8.9"),
         ou "" si la connexion échoue ou que la réponse n'est pas exploitable.
+
+    Note : HTTPS (port 443) n'est pas supporté — une négociation TLS serait nécessaire.
     """
     probe = _SERVICE_PROBES.get(service_name.lower(), b"\r\n")
 
