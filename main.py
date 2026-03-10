@@ -247,8 +247,11 @@ def main(args: Optional[List[str]] = None) -> int:
         )
 
         os_guess = detect_os(target, timeout=parsed.timeout) if parsed.os_detect else ""
-        if parsed.os_detect and os_guess not in ("unknown", ""):
-            print(f"  OS détecté : {os_guess}")
+        if parsed.os_detect:
+            if os_guess not in ("unknown", ""):
+                print(f"  OS détecté : {os_guess}")
+            else:
+                logging.warning("OS detection skipped — requires scapy and sudo (root privileges).")
 
         # Enrichissement : ajoute le nom du service et la bannière à chaque résultat brut
         results: Dict[int, dict] = {}
