@@ -291,10 +291,14 @@ def main(args: Optional[List[str]] = None) -> int:
             print(f"  {port:5d}  {info['status']:<10}{fw_str:<22} {info['service']:<15} {info['banner']}{version_str}")
 
         # Calcul et affichage des statistiques globales
-        counts = {"open": 0, "closed": 0, "filtered": 0}
+        counts: Dict[str, int] = {}
         for info in results.values():
-            counts[info["status"]] = counts.get(info["status"], 0) + 1
-        print(f"\n  open: {counts['open']}  closed: {counts['closed']}  filtered: {counts['filtered']}")
+            s = info["status"]
+            counts[s] = counts.get(s, 0) + 1
+        open_count = counts.get("open", 0)
+        closed_count = counts.get("closed", 0)
+        filtered_count = counts.get("filtered", 0) + counts.get("filtered-silent", 0) + counts.get("filtered-active", 0)
+        print(f"\n  open: {open_count}  closed: {closed_count}  filtered: {filtered_count}")
 
         all_results[target] = results
 

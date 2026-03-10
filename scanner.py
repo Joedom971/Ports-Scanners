@@ -351,6 +351,10 @@ def detect_firewall(ip: str, port: int, timeout: float = 1.0) -> str:
 
     Returns:
         "open" | "closed" | "filtered-silent" | "filtered-active" | "filtered"
+
+    Note : le champ "firewall" dans les résultats est "" quand le check n'a pas été exécuté
+    (port non filtré, ou --firewall-detect non activé). Une valeur vide ne signifie pas
+    l'absence de pare-feu.
     """
     import os as _os
 
