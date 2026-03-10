@@ -12,6 +12,7 @@ from typing import Dict
 def write_output(results: Dict[int, dict], output_path: Path, target: str, scan_type: str) -> None:
     """Écrit les résultats dans le format correspondant à l'extension du fichier."""
     ext = output_path.suffix.lower()
+    # Aiguille vers la fonction d'écriture selon l'extension du fichier
     if ext == ".json":
         _write_json(results, output_path)
     elif ext == ".csv":
@@ -19,42 +20,57 @@ def write_output(results: Dict[int, dict], output_path: Path, target: str, scan_
     elif ext == ".html":
         _write_html(results, output_path, target, scan_type)
     else:
+        # Par défaut : texte brut (.txt ou extension inconnue)
         _write_txt(results, output_path)
 
 
 def _write_txt(results: Dict[int, dict], path: Path) -> None:
+    """Écrit les résultats en texte brut, un port par ligne."""
     with path.open("w", encoding="utf-8") as f:
+        # sorted() trie les ports par ordre croissant
         for port, info in sorted(results.items()):
             f.write(f"{port:5d}: {info['status']}  {info['service']}  {info['banner']}\n")
 
 
 def _write_json(results: Dict[int, dict], path: Path) -> None:
+    """Écrit les résultats en JSON structuré."""
     with path.open("w", encoding="utf-8") as f:
+        # Les clés JSON doivent être des chaînes → conversion str(p)
         json.dump({str(p): info for p, info in results.items()}, f, indent=2)
 
 
 def _write_csv(results: Dict[int, dict], path: Path) -> None:
+    """Écrit les résultats en CSV (compatible Excel/tableur)."""
     with path.open("w", encoding="utf-8", newline="") as f:
+        # DictWriter génère automatiquement les en-têtes et les lignes
         writer = csv.DictWriter(f, fieldnames=["port", "status", "service", "banner"])
         writer.writeheader()
         for port, info in sorted(results.items()):
+            # ** décompresse le dict info pour fusionner avec le numéro de port
             writer.writerow({"port": port, **info})
 
 
 def _write_html(results: Dict[int, dict], path: Path, target: str, scan_type: str) -> None:
+    """Génère un rapport HTML coloré avec tableau et statistiques."""
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    # Comptage des ports par statut pour les statistiques
     counts = {"open": 0, "closed": 0, "filtered": 0}
     for info in results.values():
         counts[info["status"]] = counts.get(info["status"], 0) + 1
 
+    # Couleurs associées à chaque statut (vert = ouvert, rouge = fermé, gris = filtré)
     color_map = {"open": "#2ecc71", "closed": "#e74c3c", "filtered": "#95a5a6"}
 
+    # html_lib.escape() protège contre les injections HTML en échappant <, >, &, "
     safe_target = html_lib.escape(target)
     safe_scan_type = html_lib.escape(scan_type)
 
+    # Construction des lignes du tableau HTML
     rows = ""
     for port, info in sorted(results.items()):
         color = color_map.get(info["status"], "#fff")
+        # La couleur est appliquée en fond transparent (22 = opacité 13% en hexadécimal)
         rows += (
             f"<tr style='background:{color}22'>"
             f"<td>{port}</td>"
@@ -64,6 +80,7 @@ def _write_html(results: Dict[int, dict], path: Path, target: str, scan_type: st
             f"</tr>\n"
         )
 
+    # Template HTML complet avec CSS intégré (pas de dépendance externe)
     html = f"""<!DOCTYPE html>
 <html lang="fr">
 <head><meta charset="UTF-8"><title>Scan — {safe_target}</title>

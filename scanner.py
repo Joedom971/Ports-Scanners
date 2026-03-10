@@ -26,9 +26,11 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import time
 from typing import Callable, Dict, List
 
+# Tentative d'import de scapy (librairie pour manipuler des paquets réseau bruts).
+# Si scapy n'est pas installé, on désactive silencieusement le SYN scan.
 try:
     from scapy.all import IP, TCP, sr1, conf as scapy_conf
-    scapy_conf.verb = 0
+    scapy_conf.verb = 0  # désactive les messages de log de scapy
     SCAPY_AVAILABLE = True
 except ImportError:
     SCAPY_AVAILABLE = False
@@ -48,19 +50,24 @@ def scan_port_connect(ip: str, port: int, timeout: float = 1.0) -> str:
         "filtered" si le délai a expiré ou l'hôte est inaccessible.
     """
 
+    # AF_INET = protocole IPv4, SOCK_STREAM = connexion TCP
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.settimeout(timeout)
+        sock.settimeout(timeout)  # au-delà de ce délai, on considère le port filtré
         try:
+            # connect_ex retourne 0 si la connexion réussit, sinon un code d'erreur
             err = sock.connect_ex((ip, port))
         except (socket.gaierror, socket.herror, OSError):
+            # gaierror = erreur de résolution DNS, herror = erreur d'hôte, OSError = erreur réseau
             return "filtered"
 
         if err == 0:
-            return "open"
+            return "open"  # connexion TCP établie → port ouvert
 
         if err in (errno.ECONNREFUSED,):
+            # ECONNREFUSED = la machine a répondu RST (port fermé mais hôte joignable)
             return "closed"
 
+        # Tout autre code d'erreur (timeout, réseau inaccessible, etc.)
         return "filtered"
 
 
@@ -78,6 +85,7 @@ def scan_range(ip: str, start_port: int, end_port: int, timeout: float = 1.0) ->
     """
 
     results: Dict[int, str] = {}
+    # Scan séquentiel port par port (sans parallélisme)
     for port in range(start_port, end_port + 1):
         results[port] = scan_port_connect(ip, port, timeout=timeout)
     return results
@@ -90,17 +98,21 @@ def resoudre_cible(cible: str) -> str:
     Lève socket.gaierror si la résolution échoue.
     """
     try:
+        # Vérifie si la cible est déjà une adresse IP valide
         ipaddress.ip_address(cible)
-        return cible  # déjà une IP
+        return cible  # déjà une IP, pas besoin de résolution DNS
     except ValueError:
+        # Ce n'est pas une IP → on résout le nom d'hôte via DNS
         return socket.gethostbyname(cible)
 
 
 def get_service_name(port: int) -> str:
     """Retourne le nom du service associé au port, ou 'unknown'."""
     try:
+        # getservbyport consulte la base de données des services du système (/etc/services)
         return socket.getservbyport(port)
     except OSError:
+        # Port non répertorié dans la base système
         return "unknown"
 
 
@@ -114,9 +126,12 @@ def grab_banner(ip: str, port: int, timeout: float = 2.0) -> str:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
             sock.settimeout(timeout)
             if sock.connect_ex((ip, port)) != 0:
-                return ""
+                return ""  # impossible de se connecter
+            # Envoie une ligne vide pour déclencher la réponse du service
             sock.sendall(b"\r\n")
+            # Lit jusqu'à 1024 octets de réponse
             data = sock.recv(1024)
+            # Décode les octets en texte (ignore les caractères non-ASCII) et retourne la 1ère ligne
             return data.decode(errors="ignore").strip().splitlines()[0]
     except (socket.timeout, OSError, IndexError):
         return ""
@@ -146,34 +161,44 @@ def scan_range_threaded(
     """
     results: Dict[int, str] = {}
 
+    # Mélange l'ordre des ports pour rendre le scan moins détectable par un IDS
     if randomize:
         ports = list(ports)
         random.shuffle(ports)
 
+    # Verrou partagé entre tous les threads pour le rate limiting
     rate_lock = threading.Lock()
-    last_send: List[float] = [0.0]  # liste mutable pour accès depuis closure
+    # Liste mutable pour stocker le timestamp du dernier envoi (accessible depuis la closure _scan)
+    last_send: List[float] = [0.0]
 
     def _scan(port: int) -> tuple:
+        """Fonction interne : applique le délai puis scanne un port."""
         if max_rate > 0:
-            interval = 1.0 / max_rate
+            # Mode rate limiting : calcule le temps à attendre avant le prochain envoi
+            interval = 1.0 / max_rate  # ex: max_rate=2 → interval=0.5s entre chaque paquet
             with rate_lock:
+                # Le verrou garantit qu'un seul thread envoie à la fois
                 now = time.time()
                 wait = interval - (now - last_send[0])
                 if wait > 0:
-                    time.sleep(wait)
-                last_send[0] = time.time()
+                    time.sleep(wait)  # attend si on va trop vite
+                last_send[0] = time.time()  # mémorise l'heure d'envoi
         elif delay > 0 or jitter > 0:
+            # Mode délai simple : attend un temps aléatoire entre delay et delay+jitter
             time.sleep(random.uniform(delay, delay + jitter))
         return port, scan_fn(ip, port, timeout=timeout)
 
     try:
+        # Lance jusqu'à max_workers threads en parallèle
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Soumet toutes les tâches de scan à l'executor
             futures = {executor.submit(_scan, p): p for p in ports}
+            # Récupère les résultats au fur et à mesure qu'ils se terminent
             for future in as_completed(futures):
                 port, status = future.result()
                 results[port] = status
     except KeyboardInterrupt:
-        # Le bloc `with` gère l'arrêt de l'executor via __exit__
+        # Ctrl+C : le bloc `with` arrête proprement l'executor avant de propager l'interruption
         raise
 
     return results
@@ -193,21 +218,27 @@ def scan_port_syn(ip: str, port: int, timeout: float = 1.0) -> str:
         return "filtered"
 
     import os
+    # Les raw packets nécessitent les droits root (uid 0)
     if os.geteuid() != 0:
         import logging
         logging.warning("SYN scan nécessite sudo. Retourne filtered.")
         return "filtered"
 
+    # Forge un paquet IP/TCP avec le flag SYN activé
     pkt = IP(dst=ip) / TCP(dport=port, flags="S")
+    # Envoie le paquet et attend une réponse (sr1 = send/receive 1 paquet)
     resp = sr1(pkt, timeout=timeout)
 
     if resp is None:
-        return "filtered"
+        return "filtered"  # pas de réponse → port filtré ou hôte inaccessible
+
     if resp.haslayer(TCP):
         flags = int(resp[TCP].flags)
-        if flags & 0x12 == 0x12:   # SYN + ACK
+        # 0x12 = SYN (0x02) + ACK (0x10) → le port répond : il est ouvert
+        if flags & 0x12 == 0x12:
             return "open"
-        if flags & 0x04:            # RST
+        # 0x04 = RST → la machine refuse la connexion : port fermé
+        if flags & 0x04:
             return "closed"
     return "filtered"
 
