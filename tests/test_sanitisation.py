@@ -122,3 +122,16 @@ def test_parse_ports_vide():
 def test_parse_ports_invalide():
     with pytest.raises(ValueError):
         parse_ports("abc")
+
+
+# ── threads validation ────────────────────────────────────────────────────────
+
+def test_threads_zero_retourne_erreur():
+    from main import main
+    result = main(["--target", "127.0.0.1", "--ports", "80", "--threads", "0"])
+    assert result == 1
+
+def test_threads_negatif_retourne_erreur():
+    from main import main
+    result = main(["--target", "127.0.0.1", "--ports", "80", "--threads", "-1"])
+    assert result == 1

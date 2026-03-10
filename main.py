@@ -174,6 +174,9 @@ def main(args: Optional[List[str]] = None) -> int:
     if parsed.timeout <= 0:
         print("Erreur : --timeout doit être strictement positif.")
         return 1
+    if parsed.threads < 1:
+        print("Erreur : --threads doit être >= 1.")
+        return 1
     if parsed.delay < 0:
         print("Erreur : --delay doit être >= 0.")
         return 1
