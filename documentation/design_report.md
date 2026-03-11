@@ -90,7 +90,8 @@ dict[int, dict]
 
 ### SYN scan
 - Envoie uniquement le SYN (raw packet via scapy)
-- Port ouvert : reçoit SYN-ACK, n'envoie pas le ACK final → connexion jamais établie
+- Port ouvert : reçoit SYN-ACK, envoie un RST pour fermer proprement la connexion half-open
 - Port fermé : reçoit RST-ACK
 - Port filtré : aucune réponse
 - Plus discret : aucune connexion complète n'est enregistrée dans les logs applicatifs
+- Limitation connue : sur Linux sans règle iptables, le kernel envoie son propre RST avant scapy (race condition inhérente au raw socket userspace)
