@@ -1,6 +1,9 @@
-# Dépendances optionnelles
-tqdm      # progress bar
+# Dépendances réseau et API
+requests  # Appels API REST (Analyseur de vulnérabilités)
 scapy     # SYN scan + ARP discovery (nécessite sudo)
+
+# UI
+tqdm      # progress bar
 
 # Dev
 pytest

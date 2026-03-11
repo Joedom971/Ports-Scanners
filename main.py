@@ -8,11 +8,12 @@ Supporte :
   - scan parallèle (ThreadPoolExecutor)
   - host discovery (ARP ou ICMP)
   - banner grabbing, service names, rate limiting
+  - vuln analysis (recherche de CVE)
   - export console + fichier (.txt/.json/.csv/.html)
 
 Utilisation :
   python main.py --target 192.168.1.1 --ports 20-1024 --output scan.json
-  python main.py --target 192.168.1.0/24 --discover --ports 22,80 --scan-type syn
+  python main.py --target 192.168.1.0/24 --discover --ports 22,80 --scan-type syn --vuln-scan
 """
 
 import argparse
@@ -36,12 +37,18 @@ from scanner import (
 from output import write_output
 
 # Tentative d'import de tqdm pour afficher une barre de progression.
-# Si tqdm n'est pas installé, on continue sans barre.
 try:
     from tqdm import tqdm
     TQDM_AVAILABLE = True
 except ImportError:
     TQDM_AVAILABLE = False
+
+# Tentative d'import du module d'analyse de vulnérabilités
+try:
+    from vuln_analyzer import analyze_vulnerabilities
+    VULN_ANALYSIS_AVAILABLE = True
+except ImportError:
+    VULN_ANALYSIS_AVAILABLE = False
 
 
 def valider_port(port: int) -> int:
@@ -98,37 +105,29 @@ def valider_fichier_sortie(chemin: str) -> Path:
 
 
 def parse_ports(port_str: str) -> List[int]:
-    """Convertit une spécification de ports en liste d'entiers.
-
-    Accepte : "22", "20-25", "22,80,443", "22,80-85"
-    """
+    """Convertit une spécification de ports en liste d'entiers."""
     ports: List[int] = []
     try:
-        # Découpe la chaîne par les virgules (ex. "22,80-85" → ["22", "80-85"])
         for part in port_str.split(","):
             part = part.strip()
             if not part:
                 continue
             if "-" in part:
-                # Plage de ports : "80-85" → ports 80, 81, 82, 83, 84, 85
                 start_str, end_str = part.split("-", 1)
                 start, end = valider_port(int(start_str)), valider_port(int(end_str))
                 if start > end:
-                    start, end = end, start  # corrige si l'ordre est inversé (ex. "85-80")
+                    start, end = end, start
                 ports.extend(range(start, end + 1))
             else:
-                # Port unique
                 ports.append(valider_port(int(part)))
     except (ValueError, TypeError) as e:
         raise ValueError(f"Spécification de ports invalide : {e}")
     if not ports:
         raise ValueError("Aucun port valide trouvé dans la spécification.")
-    # sorted(set(...)) : supprime les doublons et trie par ordre croissant
     return sorted(set(ports))
 
 
 def main(args: Optional[List[str]] = None) -> int:
-    # Définition de tous les arguments acceptés en ligne de commande
     parser = argparse.ArgumentParser(description="Scanner de ports TCP")
     parser.add_argument("--target", required=True, help="Hôte, IP ou sous-réseau CIDR cible")
     parser.add_argument("--ports", required=True,
@@ -161,16 +160,16 @@ def main(args: Optional[List[str]] = None) -> int:
                         help="Détecter la version des services ouverts (probe actif par protocole)")
     parser.add_argument("--firewall-detect", action="store_true",
                         help="Distinguer les types de filtrage pare-feu (nécessite scapy + sudo)")
+    parser.add_argument("--vuln-scan", action="store_true",
+                        help="Rechercher des vulnérabilités CVE basées sur les bannières/versions détectées")
 
     parsed = parser.parse_args(args=args)
 
-    # Configuration du système de logs (DEBUG = très verbeux, WARNING = seulement les alertes)
     logging.basicConfig(
         level=getattr(logging, parsed.log_level),
         format="%(asctime)s [%(levelname)s] %(message)s",
     )
 
-    # Validation des valeurs numériques avant de commencer le scan
     if parsed.timeout <= 0:
         print("Erreur : --timeout doit être strictement positif.")
         return 1
@@ -187,11 +186,12 @@ def main(args: Optional[List[str]] = None) -> int:
         print("Erreur : --jitter doit être >= 0.")
         return 1
     if parsed.max_rate > 0 and parsed.threads > 1:
-        # En mode max-rate, les envois sont sérialisés → plusieurs threads ne servent à rien
         print(f"Note : --max-rate sérialise les envois — --threads {parsed.threads} n'a pas d'effet. "
               f"Les paquets seront envoyés à {parsed.max_rate} pkt/s.")
+              
+    if parsed.vuln_scan and not VULN_ANALYSIS_AVAILABLE:
+        logging.warning("Le flag --vuln-scan est activé mais le module vuln_analyzer (ou la librairie requests) est introuvable. L'analyse CVE sera ignorée.")
 
-    # Sanitisation des entrées utilisateur (protection contre les valeurs malformées)
     try:
         target_sanitise = valider_cible(parsed.target)
         ports = parse_ports(parsed.ports)
@@ -200,30 +200,26 @@ def main(args: Optional[List[str]] = None) -> int:
         print(f"Erreur : {e}")
         return 1
 
-    # Crée le dossier de destination si le chemin de sortie contient des sous-dossiers
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Sélection de la fonction de scan selon le type demandé
     if parsed.scan_type == "syn":
         if not SCAPY_AVAILABLE:
             print("AVERTISSEMENT : scapy non disponible. Installez-le : pip install scapy")
             print("Fallback sur TCP connect.")
             scan_fn = scan_port_connect
         else:
-            scan_fn = scan_port_syn  # scan SYN via raw packets
+            scan_fn = scan_port_syn
     else:
-        scan_fn = scan_port_connect  # scan TCP connect standard
+        scan_fn = scan_port_connect
 
-    # Résolution DNS unique : on résout le nom d'hôte une seule fois au lieu de le résoudre
-    # à chaque port scanné (évite N requêtes DNS pour N ports).
-    # Les CIDR (ex. 192.168.1.0/24) sont traités par discover_hosts → pas de résolution ici.
     import ipaddress as _ipaddress
     _is_cidr = False
     try:
         _ipaddress.ip_network(target_sanitise, strict=False)
-        _is_cidr = "/" in target_sanitise  # vérifie que c'est bien un réseau, pas une IP seule
+        _is_cidr = "/" in target_sanitise
     except ValueError:
         pass
+        
     if not _is_cidr:
         try:
             target_sanitise = resoudre_cible(target_sanitise)
@@ -231,7 +227,6 @@ def main(args: Optional[List[str]] = None) -> int:
             print(f"Erreur : impossible de résoudre '{target_sanitise}' — {e}")
             return 1
 
-    # Host discovery : détecte les machines actives sur le réseau avant de scanner leurs ports
     if parsed.discover:
         from discovery import discover_hosts
         logging.info(f"Host discovery sur {target_sanitise}...")
@@ -241,16 +236,13 @@ def main(args: Optional[List[str]] = None) -> int:
             return 1
         print(f"{len(targets)} hôte(s) actif(s) : {', '.join(targets)}")
     else:
-        # Pas de discovery : on scanne uniquement la cible fournie
         targets = [target_sanitise]
 
-    # Dictionnaire pour stocker les résultats de tous les hôtes scannés
     all_results: Dict[str, Dict[int, dict]] = {}
 
     for target in targets:
         print(f"\nScan de {target} — {len(ports)} ports ({parsed.scan_type})")
 
-        # Lance le scan multi-threadé sur tous les ports
         raw = scan_range_threaded(
             target, ports, scan_fn,
             timeout=parsed.timeout,
@@ -268,22 +260,32 @@ def main(args: Optional[List[str]] = None) -> int:
             else:
                 logging.warning("OS detection skipped — requires scapy and sudo (root privileges).")
 
-        # Enrichissement : ajoute le nom du service et la bannière à chaque résultat brut
         results: Dict[int, dict] = {}
-        # tqdm affiche une barre de progression si disponible, sinon itération normale
         port_iter = tqdm(raw.items(), desc="Enrichissement") if TQDM_AVAILABLE else raw.items()
+        
         for port, status in port_iter:
             service = get_service_name(port)
             banner = ""
-            # Banner grabbing uniquement sur les ports ouverts (inutile sur closed/filtered)
             if parsed.banner and status == "open":
                 banner = grab_banner(target, port, timeout=parsed.timeout)
+            
             version = ""
             if parsed.version_detect and status == "open":
                 version = detect_service_version(target, port, service, timeout=parsed.timeout)
+                
+            # --- Analyse de Vulnérabilités ---
+            vulns = []
+            if parsed.vuln_scan and VULN_ANALYSIS_AVAILABLE and status == "open":
+                # On privilégie la détection active de version, sinon la bannière standard
+                target_string = version if version else banner
+                if target_string:
+                    vulns = analyze_vulnerabilities(target_string)
+            # ---------------------------------
+                
             firewall = ""
             if parsed.firewall_detect and status == "filtered":
                 firewall = detect_firewall(target, port, timeout=parsed.timeout)
+                
             results[port] = {
                 "status": status,
                 "service": service,
@@ -291,34 +293,39 @@ def main(args: Optional[List[str]] = None) -> int:
                 "os": os_guess,
                 "version": version,
                 "firewall": firewall,
+                "vulns": vulns,  # Ajout de la clé vulns au dictionnaire
             }
 
-        # Affichage des résultats dans le terminal, triés par numéro de port
+        # Affichage des résultats dans le terminal
         for port, info in sorted(results.items()):
             version_str = f"  [{info.get('version')}]" if info.get("version") else ""
             fw_str = f" ({info.get('firewall')})" if info.get("firewall") else ""
-            print(f"  {port:5d}  {info['status']:<10}{fw_str:<22} {info['service']:<15} {info['banner']}{version_str}")
+            vuln_str = f"  [!] {len(info['vulns'])} CVE(s)" if info.get("vulns") else ""
+            
+            print(f"  {port:5d}  {info['status']:<10}{fw_str:<22} {info['service']:<15} {info['banner']}{version_str}{vuln_str}")
 
-        # Calcul et affichage des statistiques globales
         counts: Dict[str, int] = {}
+        vuln_total = 0
         for info in results.values():
             s = info["status"]
             counts[s] = counts.get(s, 0) + 1
+            vuln_total += len(info.get("vulns", []))
+            
         open_count = counts.get("open", 0)
         closed_count = counts.get("closed", 0)
         filtered_count = counts.get("filtered", 0) + counts.get("filtered-silent", 0) + counts.get("filtered-active", 0)
+        
         print(f"\n  open: {open_count}  closed: {closed_count}  filtered: {filtered_count}")
+        if vuln_total > 0:
+            print(f"  [ATTENTION] {vuln_total} vulnérabilité(s) critique(s) détectée(s).")
 
         all_results[target] = results
 
-    # Export des résultats dans un fichier
     if len(all_results) == 1:
-        # Un seul hôte : comportement standard
         target_key = list(all_results.keys())[0]
         write_output(all_results[target_key], out_path, target_key, parsed.scan_type)
         print(f"\nRésultats sauvegardés dans {out_path}")
     else:
-        # Plusieurs hôtes : un fichier par hôte (nom_base_IP.ext)
         for host_ip, host_results in all_results.items():
             safe_ip = host_ip.replace(".", "_").replace(":", "_")
             host_path = out_path.parent / f"{out_path.stem}_{safe_ip}{out_path.suffix}"

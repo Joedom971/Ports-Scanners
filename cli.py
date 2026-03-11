@@ -38,9 +38,9 @@ VITESSES = {
 # Associe chaque profil à une spécification de ports (None = l'utilisateur saisit lui-même)
 PROFILS = {
     "Scan rapide   — ports courants (web, SSH, bureau à distance)": "22,80,443,3389,8080",
-    "Scan standard — tous les ports réservés (1 à 1024)":          "1-1024",
-    "Scan complet  — tous les ports (1 à 65535, lent)":            "1-65535",
-    "Personnalisé  — je choisis moi-même":                         None,
+    "Scan standard — tous les ports réservés (1 à 1024)":           "1-1024",
+    "Scan complet  — tous les ports (1 à 65535, lent)":             "1-65535",
+    "Personnalisé  — je choisis moi-même":                          None,
 }
 
 
@@ -144,6 +144,16 @@ def main() -> int:
         "Détecter la version des services trouvés (ex: Apache/2.4) ?",
         defaut=False,
     )
+    
+    # --- NOUVELLE OPTION : SCAN DE VULNÉRABILITÉS ---
+    vuln_scan = False
+    if version_detect or banner:
+        vuln_scan = oui_non(
+            "Rechercher des vulnérabilités (CVE) sur ces versions (nécessite Internet) ?",
+            defaut=False,
+        )
+    # ------------------------------------------------
+
     firewall_detect_asked = oui_non(
         "Détecter le type de pare-feu (DROP silencieux vs REJECT actif) ?",
         defaut=False,
@@ -199,7 +209,7 @@ def main() -> int:
 
     # Affiche un résumé de tous les paramètres avant de lancer le scan
     _print_safe("\n╔══════════════════════════════════════════════╗")
-    _print_safe("║               Récapitulatif                  ║")
+    _print_safe("║                Récapitulatif                 ║")
     _print_safe("╠══════════════════════════════════════════════╣")
     _print_safe(f"║  Cible       : {target:<31}║")
     _print_safe(f"║  Ports       : {ports:<31}║")
@@ -208,6 +218,7 @@ def main() -> int:
     _print_safe(f"║  Découverte  : {'oui' if discover else 'non':<31}║")
     _print_safe(f"║  Infos srv.  : {'oui' if banner else 'non':<31}║")
     _print_safe(f"║  Ver. svc    : {'oui' if version_detect else 'non':<31}║")
+    _print_safe(f"║  Anal. CVE   : {'oui' if vuln_scan else 'non':<31}║")
     _print_safe(f"║  Pare-feu    : {'oui' if firewall_detect else 'non':<31}║")
     _print_safe(f"║  Détect. OS  : {'oui' if os_detect else 'non':<31}║")
     _print_safe(f"║  Rapport     : {nom_fichier:<31}║")
@@ -243,6 +254,8 @@ def main() -> int:
         scan_args.append("--banner")
     if version_detect:
         scan_args.append("--version-detect")
+    if vuln_scan:
+        scan_args.append("--vuln-scan")
     if firewall_detect:
         scan_args.append("--firewall-detect")
     if os_detect:
