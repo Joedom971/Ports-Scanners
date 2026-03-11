@@ -5,7 +5,6 @@ Ce module fournit un scanner de ports TCP via les sockets Python et scapy (optio
 Fonctions :
   - scan_port_connect(ip, port, timeout)                          -> statut
   - scan_port_syn(ip, port, timeout)                              -> statut (nécessite scapy + sudo)
-  - scan_range(ip, start_port, end_port, timeout)                 -> dict[port, statut]
   - scan_range_threaded(ip, ports, scan_fn, timeout, delay, ...)  -> dict[port, statut]
   - get_service_name(port)                                        -> nom du service
   - grab_banner(ip, port, timeout)                                -> bannière du service
@@ -32,7 +31,7 @@ from typing import Callable, Dict, List
 # Tentative d'import de scapy (librairie pour manipuler des paquets réseau bruts).
 # Si scapy n'est pas installé, on désactive silencieusement le SYN scan.
 try:
-    from scapy.all import IP, TCP, ICMP, sr1, conf as scapy_conf
+    from scapy.all import IP, TCP, ICMP, sr1, send, conf as scapy_conf
     scapy_conf.verb = 0  # désactive les messages de log de scapy
     SCAPY_AVAILABLE = True
 except ImportError:
@@ -80,26 +79,6 @@ def scan_port_connect(ip: str, port: int, timeout: float = 1.0) -> str:
         return "filtered"
 
 
-def scan_range(ip: str, start_port: int, end_port: int, timeout: float = 1.0) -> Dict[int, str]:
-    """Scanne une plage de ports TCP.
-
-    Args:
-        ip: adresse IPv4/IPv6 ou nom d'hôte cible.
-        start_port: premier port (inclus).
-        end_port: dernier port (inclus).
-        timeout: délai d'expiration par port.
-
-    Returns:
-        Dictionnaire port -> statut.
-    """
-
-    results: Dict[int, str] = {}
-    # Scan séquentiel port par port (sans parallélisme)
-    for port in range(start_port, end_port + 1):
-        results[port] = scan_port_connect(ip, port, timeout=timeout)
-    return results
-
-
 def resoudre_cible(cible: str) -> str:
     """Résout un hostname en adresse IP une seule fois.
 
@@ -128,6 +107,11 @@ def get_service_name(port: int) -> str:
 def grab_banner(ip: str, port: int, timeout: float = 2.0) -> str:
     """Tente de lire la bannière du service sur ce port TCP.
 
+    Certains services (SSH, FTP, SMTP…) envoient leur bannière dès la connexion
+    sans qu'il soit nécessaire d'envoyer quoi que ce soit. On tente d'abord un
+    recv() passif ; si le service ne répond pas spontanément, on envoie \r\n pour
+    le déclencher (comportement HTTP-like).
+
     Returns:
         Chaîne de la bannière (première ligne), ou "" si échec.
     """
@@ -135,12 +119,18 @@ def grab_banner(ip: str, port: int, timeout: float = 2.0) -> str:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
             sock.settimeout(timeout)
             if sock.connect_ex((ip, port)) != 0:
-                return ""  # impossible de se connecter
-            # Envoie une ligne vide pour déclencher la réponse du service
-            sock.sendall(b"\r\n")
-            # Lit jusqu'à 1024 octets de réponse
-            data = sock.recv(1024)
-            # Décode les octets en texte (ignore les caractères non-ASCII) et retourne la 1ère ligne
+                return ""
+            # Tentative passive : certains services bannèrent immédiatement
+            try:
+                sock.settimeout(min(0.5, timeout))
+                data = sock.recv(1024)
+            except socket.timeout:
+                data = b""
+            # Si rien reçu, envoie \r\n pour déclencher la réponse
+            if not data:
+                sock.settimeout(timeout)
+                sock.sendall(b"\r\n")
+                data = sock.recv(1024)
             return data.decode(errors="ignore").strip().splitlines()[0]
     except (socket.timeout, OSError, IndexError):
         return ""
@@ -297,6 +287,12 @@ def scan_port_syn(ip: str, port: int, timeout: float = 1.0) -> str:
         flags = int(resp[TCP].flags)
         # 0x12 = SYN (0x02) + ACK (0x10) → le port répond : il est ouvert
         if flags & 0x12 == 0x12:
+            # Envoie un RST pour fermer proprement la connexion half-open.
+            # Sans ça, la cible maintient l'entrée dans sa table de connexions
+            # jusqu'au timeout TCP — sur un gros scan, ça peut saturer sa table.
+            # send() et non sr1() : un RST n'attend pas de réponse (RFC 793).
+            rst = IP(dst=ip) / TCP(dport=port, sport=resp[TCP].dport, flags="R", seq=resp[TCP].ack)
+            send(rst)
             return "open"
         # 0x04 = RST → la machine refuse la connexion : port fermé
         if flags & 0x04:
@@ -332,6 +328,11 @@ def detect_os(ip: str, timeout: float = 1.0) -> str:
         pkt = IP(dst=ip) / TCP(dport=probe_port, flags="S")
         resp = sr1(pkt, timeout=timeout)
         if resp is not None and resp.haslayer(IP) and resp.haslayer(TCP):
+            flags = int(resp[TCP].flags)
+            if flags & 0x12 == 0x12:
+                # SYN-ACK reçu : ferme la connexion half-open proprement
+                rst = IP(dst=ip) / TCP(dport=probe_port, sport=resp[TCP].dport, flags="R", seq=resp[TCP].ack)
+                send(rst)
             ttl = resp[IP].ttl
             # Les OS initialisent le TTL à une valeur fixe ; on arrondit au palier connu
             if ttl <= 64:
@@ -378,6 +379,9 @@ def detect_firewall(ip: str, port: int, timeout: float = 1.0) -> str:
     if resp.haslayer(TCP):
         flags = int(resp[TCP].flags)
         if flags & 0x12 == 0x12:
+            # Ferme la connexion half-open avant de retourner le résultat
+            rst = IP(dst=ip) / TCP(dport=port, sport=resp[TCP].dport, flags="R", seq=resp[TCP].ack)
+            send(rst)
             return "open"      # SYN-ACK → port ouvert
         if flags & 0x04:
             return "closed"    # RST → port fermé, pas de pare-feu devant
