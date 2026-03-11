@@ -1,21 +1,21 @@
-"""Scanner de ports TCP.
+"""TCP port scanner.
 
-Ce module fournit un scanner de ports TCP via les sockets Python et scapy (optionnel).
+This module provides a TCP port scanner using Python sockets and scapy (optional).
 
-Fonctions :
-  - scan_port_connect(ip, port, timeout)                          -> statut
-  - scan_port_syn(ip, port, timeout)                              -> statut (nécessite scapy + sudo)
-  - scan_range_threaded(ip, ports, scan_fn, timeout, delay, ...)  -> dict[port, statut]
-  - get_service_name(port)                                        -> nom du service
-  - grab_banner(ip, port, timeout)                                -> bannière du service
-  - detect_service_version(ip, port, service_name, timeout)       -> version du service
-  - detect_os(ip, timeout)                                        -> système d'exploitation estimé
-  - detect_firewall(ip, port, timeout)                            -> type de filtrage pare-feu
+Functions:
+  - scan_port_connect(ip, port, timeout)                          -> status
+  - scan_port_syn(ip, port, timeout)                              -> status (requires scapy + sudo)
+  - scan_range_threaded(ip, ports, scan_fn, timeout, delay, ...)  -> dict[port, status]
+  - get_service_name(port)                                        -> service name
+  - grab_banner(ip, port, timeout)                                -> service banner
+  - detect_service_version(ip, port, service_name, timeout)       -> service version
+  - detect_os(ip, timeout)                                        -> estimated operating system
+  - detect_firewall(ip, port, timeout)                            -> firewall filtering type
 
-Valeurs de statut :
-  - "open"     (ouvert)
-  - "closed"   (fermé)
-  - "filtered" (filtré ou inaccessible)
+Status values:
+  - "open"     (open)
+  - "closed"   (closed)
+  - "filtered" (filtered or unreachable)
 
 """
 
@@ -28,105 +28,105 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import time
 from typing import Callable, Dict, List
 
-# Tentative d'import de scapy (librairie pour manipuler des paquets réseau bruts).
-# Si scapy n'est pas installé, on désactive silencieusement le SYN scan.
+# Attempt to import scapy (library for manipulating raw network packets).
+# If scapy is not installed, SYN scan is silently disabled.
 try:
     from scapy.all import IP, TCP, ICMP, sr1, send, conf as scapy_conf
-    scapy_conf.verb = 0  # désactive les messages de log de scapy
+    scapy_conf.verb = 0  # disable scapy log messages
     SCAPY_AVAILABLE = True
 except ImportError:
     SCAPY_AVAILABLE = False
 
-# Codes d'erreur "connexion refusée" selon la plateforme
-# ECONNREFUSED = 111 sur Linux/macOS, WSAECONNREFUSED = 10061 sur Windows
+# "Connection refused" error codes by platform
+# ECONNREFUSED = 111 on Linux/macOS, WSAECONNREFUSED = 10061 on Windows
 _ECONNREFUSED_CODES = {errno.ECONNREFUSED}
 if hasattr(errno, "WSAECONNREFUSED"):
     _ECONNREFUSED_CODES.add(errno.WSAECONNREFUSED)
 
 
 def scan_port_connect(ip: str, port: int, timeout: float = 1.0) -> str:
-    """Scanne un seul port TCP via connect().
+    """Scans a single TCP port via connect().
 
     Args:
-        ip: adresse IPv4 ou nom d'hôte cible (IPv6 non supporté).
-        port: numéro de port TCP (1-65535).
-        timeout: délai d'expiration du socket en secondes.
+        ip: target IPv4 address or hostname (IPv6 not supported).
+        port: TCP port number (1-65535).
+        timeout: socket expiry delay in seconds.
 
     Returns:
-        "open"     si la connexion a réussi.
-        "closed"   si la connexion a été refusée.
-        "filtered" si le délai a expiré ou l'hôte est inaccessible.
+        "open"     if the connection succeeded.
+        "closed"   if the connection was refused.
+        "filtered" if the timeout expired or the host is unreachable.
     """
 
-    # AF_INET = protocole IPv4, SOCK_STREAM = connexion TCP
+    # AF_INET = IPv4 protocol, SOCK_STREAM = TCP connection
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.settimeout(timeout)  # au-delà de ce délai, on considère le port filtré
+        sock.settimeout(timeout)  # beyond this delay, the port is considered filtered
         try:
-            # connect_ex retourne 0 si la connexion réussit, sinon un code d'erreur
+            # connect_ex returns 0 if the connection succeeds, otherwise an error code
             err = sock.connect_ex((ip, port))
         except (socket.gaierror, socket.herror, OSError):
-            # gaierror = erreur de résolution DNS, herror = erreur d'hôte, OSError = erreur réseau
+            # gaierror = DNS resolution error, herror = host error, OSError = network error
             return "filtered"
 
         if err == 0:
-            return "open"  # connexion TCP établie → port ouvert
+            return "open"  # TCP connection established → port is open
 
         if err in _ECONNREFUSED_CODES:
-            # ECONNREFUSED = la machine a répondu RST (port fermé mais hôte joignable)
+            # ECONNREFUSED = the machine responded with RST (port closed but host reachable)
             return "closed"
 
-        # Tout autre code d'erreur (timeout, réseau inaccessible, etc.)
+        # Any other error code (timeout, unreachable network, etc.)
         return "filtered"
 
 
 def resoudre_cible(cible: str) -> str:
-    """Résout un hostname en adresse IP une seule fois.
+    """Resolves a hostname to an IP address once.
 
-    Si la cible est déjà une IP, la retourne telle quelle.
-    Lève socket.gaierror si la résolution échoue.
+    If the target is already an IP, returns it as-is.
+    Raises socket.gaierror if resolution fails.
     """
     try:
-        # Vérifie si la cible est déjà une adresse IP valide
+        # Check if the target is already a valid IP address
         ipaddress.ip_address(cible)
-        return cible  # déjà une IP, pas besoin de résolution DNS
+        return cible  # already an IP, no DNS resolution needed
     except ValueError:
-        # Ce n'est pas une IP → on résout le nom d'hôte via DNS
+        # Not an IP → resolve the hostname via DNS
         return socket.gethostbyname(cible)
 
 
 def get_service_name(port: int) -> str:
-    """Retourne le nom du service associé au port, ou 'unknown'."""
+    """Returns the service name associated with the port, or 'unknown'."""
     try:
-        # getservbyport consulte la base de données des services du système (/etc/services)
+        # getservbyport looks up the system services database (/etc/services)
         return socket.getservbyport(port)
     except OSError:
-        # Port non répertorié dans la base système
+        # Port not listed in the system database
         return "unknown"
 
 
 def grab_banner(ip: str, port: int, timeout: float = 2.0) -> str:
-    """Tente de lire la bannière du service sur ce port TCP.
+    """Attempts to read the service banner on this TCP port.
 
-    Certains services (SSH, FTP, SMTP…) envoient leur bannière dès la connexion
-    sans qu'il soit nécessaire d'envoyer quoi que ce soit. On tente d'abord un
-    recv() passif ; si le service ne répond pas spontanément, on envoie \r\n pour
-    le déclencher (comportement HTTP-like).
+    Some services (SSH, FTP, SMTP…) send their banner immediately upon connection
+    without requiring anything to be sent. A passive recv() is tried first;
+    if the service does not respond spontaneously, \r\n is sent to trigger it
+    (HTTP-like behaviour).
 
     Returns:
-        Chaîne de la bannière (première ligne), ou "" si échec.
+        Banner string (first line), or "" on failure.
     """
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
             sock.settimeout(timeout)
             if sock.connect_ex((ip, port)) != 0:
                 return ""
-            # Tentative passive : certains services bannèrent immédiatement
+            # Passive attempt: some services banner immediately upon connection
             try:
                 sock.settimeout(min(0.5, timeout))
                 data = sock.recv(1024)
             except socket.timeout:
                 data = b""
-            # Si rien reçu, envoie \r\n pour déclencher la réponse
+            # If nothing received, send \r\n to trigger a response
             if not data:
                 sock.settimeout(timeout)
                 sock.sendall(b"\r\n")
@@ -136,12 +136,12 @@ def grab_banner(ip: str, port: int, timeout: float = 2.0) -> str:
         return ""
 
 
-# Requêtes spécifiques envoyées pour identifier la version du service
+# Protocol-specific probes sent to identify the service version
 _SERVICE_PROBES: Dict[str, bytes] = {
     "http":   b"HEAD / HTTP/1.0\r\nHost: localhost\r\n\r\n",
-    "ftp":    b"",    # le serveur envoie la bannière dès la connexion
+    "ftp":    b"",    # the server sends the banner immediately upon connection
     "smtp":   b"EHLO probe\r\n",
-    "ssh":    b"",    # idem
+    "ssh":    b"",    # same
     "pop3":   b"",
     "imap":   b"",
     "telnet": b"",
@@ -149,19 +149,19 @@ _SERVICE_PROBES: Dict[str, bytes] = {
 
 
 def detect_service_version(ip: str, port: int, service_name: str, timeout: float = 2.0) -> str:
-    """Envoie un probe spécifique au protocole pour identifier la version du service.
+    """Sends a protocol-specific probe to identify the service version.
 
-    Va au-delà du simple banner grab en utilisant une requête adaptée au protocole
-    attendu (HTTP HEAD, SMTP EHLO, etc.) pour extraire le nom et la version du logiciel.
+    Goes beyond a simple banner grab by using a request tailored to the expected
+    protocol (HTTP HEAD, SMTP EHLO, etc.) to extract the software name and version.
 
     Args:
-        service_name: nom retourné par get_service_name() (ex. "http", "ssh", "smtp").
+        service_name: name returned by get_service_name() (e.g. "http", "ssh", "smtp").
 
     Returns:
-        Chaîne de version extraite (ex. "nginx/1.18.0", "SSH-2.0-OpenSSH_8.9"),
-        ou "" si la connexion échoue ou que la réponse n'est pas exploitable.
+        Extracted version string (e.g. "nginx/1.18.0", "SSH-2.0-OpenSSH_8.9"),
+        or "" if the connection fails or the response is not usable.
 
-    Note : HTTPS (port 443) n'est pas supporté — une négociation TLS serait nécessaire.
+    Note: HTTPS (port 443) is not supported — a TLS handshake would be required.
     """
     probe = _SERVICE_PROBES.get(service_name.lower(), b"\r\n")
 
@@ -176,12 +176,12 @@ def detect_service_version(ip: str, port: int, service_name: str, timeout: float
             response = data.decode(errors="ignore").strip()
             if not response:
                 return ""
-            # Pour HTTP : cherche l'en-tête "Server:" qui contient le nom du serveur web
+            # For HTTP: look for the "Server:" header which contains the web server name
             if service_name.lower() in ("http", "https"):
                 for line in response.splitlines():
                     if line.lower().startswith("server:"):
                         return line.split(":", 1)[1].strip()
-            # Pour SSH, FTP, SMTP et les autres : la première ligne contient l'identification
+            # For SSH, FTP, SMTP and others: the first line contains the identification
             lines = response.splitlines()
             return lines[0] if lines else ""
     except (socket.timeout, OSError):
@@ -199,69 +199,69 @@ def scan_range_threaded(
     max_rate: float = 0.0,
     jitter: float = 0.0,
 ) -> Dict[int, str]:
-    """Scanne une liste de ports en parallèle via ThreadPoolExecutor.
+    """Scans a list of ports in parallel using ThreadPoolExecutor.
 
     Args:
-        max_rate: nombre maximal de paquets par seconde (0 = illimité).
-                  Quand max_rate > 0, il remplace delay : un verrou global
-                  sérialise les envois pour respecter l'intervalle minimum
-                  entre deux paquets (true rate limiting).
-        jitter: variation aléatoire ajoutée au délai (en secondes).
-                Le délai réel est random.uniform(delay, delay + jitter).
-                Ignoré si max_rate > 0.
+        max_rate: maximum number of packets per second (0 = unlimited).
+                  When max_rate > 0, it replaces delay: a global lock
+                  serialises sends to respect the minimum interval
+                  between two packets (true rate limiting).
+        jitter: random variation added to the delay (in seconds).
+                The actual delay is random.uniform(delay, delay + jitter).
+                Ignored when max_rate > 0.
     """
     results: Dict[int, str] = {}
 
-    # Mélange l'ordre des ports pour rendre le scan moins détectable par un IDS
+    # Shuffle port order to make the scan less detectable by an IDS
     if randomize:
         ports = list(ports)
         random.shuffle(ports)
 
-    # Verrou partagé entre tous les threads pour le rate limiting
+    # Lock shared across all threads for rate limiting
     rate_lock = threading.Lock()
-    # Liste mutable pour stocker le timestamp du dernier envoi (accessible depuis la closure _scan)
+    # Mutable list to store the timestamp of the last send (accessible from the _scan closure)
     last_send: List[float] = [0.0]
 
     def _scan(port: int) -> tuple:
-        """Fonction interne : applique le délai puis scanne un port."""
+        """Inner function: applies the delay then scans a port."""
         if max_rate > 0:
-            # Mode rate limiting : calcule le temps à attendre avant le prochain envoi
-            interval = 1.0 / max_rate  # ex: max_rate=2 → interval=0.5s entre chaque paquet
+            # Rate limiting mode: compute the time to wait before the next send
+            interval = 1.0 / max_rate  # e.g. max_rate=2 → interval=0.5s between each packet
             with rate_lock:
-                # Le verrou garantit qu'un seul thread envoie à la fois
+                # The lock ensures only one thread sends at a time
                 now = time.time()
                 wait = interval - (now - last_send[0])
                 if wait > 0:
-                    time.sleep(wait)  # attend si on va trop vite
-                last_send[0] = time.time()  # mémorise l'heure d'envoi
+                    time.sleep(wait)  # wait if sending too fast
+                last_send[0] = time.time()  # record the send timestamp
         elif delay > 0 or jitter > 0:
-            # Mode délai simple : attend un temps aléatoire entre delay et delay+jitter
+            # Simple delay mode: wait a random time between delay and delay+jitter
             time.sleep(random.uniform(delay, delay + jitter))
         return port, scan_fn(ip, port, timeout=timeout)
 
     try:
-        # Lance jusqu'à max_workers threads en parallèle
+        # Launch up to max_workers threads in parallel
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            # Soumet toutes les tâches de scan à l'executor
+            # Submit all scan tasks to the executor
             futures = {executor.submit(_scan, p): p for p in ports}
-            # Récupère les résultats au fur et à mesure qu'ils se terminent
+            # Collect results as they complete
             for future in as_completed(futures):
                 port, status = future.result()
                 results[port] = status
     except KeyboardInterrupt:
-        # Ctrl+C : le bloc `with` arrête proprement l'executor avant de propager l'interruption
+        # Ctrl+C: the `with` block cleanly stops the executor before propagating the interrupt
         raise
 
     return results
 
 
 def scan_port_syn(ip: str, port: int, timeout: float = 1.0) -> str:
-    """Scanne un port via SYN scan (raw packets, nécessite scapy + sudo).
+    """Scans a port via SYN scan (raw packets, requires scapy + sudo).
 
     Returns:
-        "open"     si SYN-ACK reçu.
-        "closed"   si RST reçu.
-        "filtered" si timeout ou scapy/sudo indisponible.
+        "open"     if SYN-ACK received.
+        "closed"   if RST received.
+        "filtered" if timeout or scapy/sudo unavailable.
     """
     if not SCAPY_AVAILABLE:
         import logging
@@ -269,52 +269,52 @@ def scan_port_syn(ip: str, port: int, timeout: float = 1.0) -> str:
         return "filtered"
 
     import os
-    # Les raw packets nécessitent les droits root (uid 0)
+    # Raw packets require root privileges (uid 0)
     if getattr(os, "geteuid", lambda: 1)() != 0:
         import logging
         logging.warning("SYN scan nécessite sudo. Retourne filtered.")
         return "filtered"
 
-    # Forge un paquet IP/TCP avec le flag SYN activé
+    # Craft an IP/TCP packet with the SYN flag set
     pkt = IP(dst=ip) / TCP(dport=port, flags="S")
-    # Envoie le paquet et attend une réponse (sr1 = send/receive 1 paquet)
+    # Send the packet and wait for a response (sr1 = send/receive 1 packet)
     resp = sr1(pkt, timeout=timeout)
 
     if resp is None:
-        return "filtered"  # pas de réponse → port filtré ou hôte inaccessible
+        return "filtered"  # no response → port filtered or host unreachable
 
     if resp.haslayer(TCP):
         flags = int(resp[TCP].flags)
-        # 0x12 = SYN (0x02) + ACK (0x10) → le port répond : il est ouvert
+        # 0x12 = SYN (0x02) + ACK (0x10) → the port responds: it is open
         if flags & 0x12 == 0x12:
-            # Envoie un RST pour fermer proprement la connexion half-open.
-            # Sans ça, la cible maintient l'entrée dans sa table de connexions
-            # jusqu'au timeout TCP — sur un gros scan, ça peut saturer sa table.
-            # send() et non sr1() : un RST n'attend pas de réponse (RFC 793).
+            # Send a RST to cleanly close the half-open connection.
+            # Without this, the target keeps the entry in its connection table
+            # until the TCP timeout — on a large scan, this can exhaust the table.
+            # send() not sr1(): a RST does not expect a response (RFC 793).
             rst = IP(dst=ip) / TCP(dport=port, sport=resp[TCP].dport, flags="R", seq=resp[TCP].ack)
             send(rst)
             return "open"
-        # 0x04 = RST → la machine refuse la connexion : port fermé
+        # 0x04 = RST → the machine refuses the connection: port closed
         if flags & 0x04:
             return "closed"
     return "filtered"
 
 
 def detect_os(ip: str, timeout: float = 1.0) -> str:
-    """Tente de détecter le système d'exploitation via TCP fingerprinting.
+    """Attempts to detect the operating system via TCP fingerprinting.
 
-    Analyse le TTL de la réponse SYN-ACK (ou RST) pour estimer l'OS.
-    Nécessite scapy et sudo (raw sockets).
+    Analyses the TTL of the SYN-ACK (or RST) response to estimate the OS.
+    Requires scapy and sudo (raw sockets).
 
-    Limitation : le TTL observé est le TTL initial moins le nombre de sauts.
-    Un hôte Windows (TTL initial 128) à 65+ sauts peut être classifié Linux/Unix.
-    Les résultats sont indicatifs, pas garantis.
+    Limitation: the observed TTL is the initial TTL minus the number of hops.
+    A Windows host (initial TTL 128) at 65+ hops may be classified as Linux/Unix.
+    Results are indicative, not guaranteed.
 
     Returns:
         "Linux/Unix"     — TTL <= 64
         "Windows"        — TTL <= 128
         "Network device" — TTL > 128
-        "unknown"        — pas de réponse ou scapy/sudo indisponible
+        "unknown"        — no response or scapy/sudo unavailable
     """
     if not SCAPY_AVAILABLE:
         return "unknown"
@@ -323,18 +323,18 @@ def detect_os(ip: str, timeout: float = 1.0) -> str:
     if getattr(_os, "geteuid", lambda: 1)() != 0:
         return "unknown"
 
-    # Sonde les ports courants pour obtenir une réponse SYN-ACK
+    # Probe common ports to obtain a SYN-ACK response
     for probe_port in (80, 443, 22):
         pkt = IP(dst=ip) / TCP(dport=probe_port, flags="S")
         resp = sr1(pkt, timeout=timeout)
         if resp is not None and resp.haslayer(IP) and resp.haslayer(TCP):
             flags = int(resp[TCP].flags)
             if flags & 0x12 == 0x12:
-                # SYN-ACK reçu : ferme la connexion half-open proprement
+                # SYN-ACK received: cleanly close the half-open connection
                 rst = IP(dst=ip) / TCP(dport=probe_port, sport=resp[TCP].dport, flags="R", seq=resp[TCP].ack)
                 send(rst)
             ttl = resp[IP].ttl
-            # Les OS initialisent le TTL à une valeur fixe ; on arrondit au palier connu
+            # OSes initialise TTL to a fixed value; round to the nearest known threshold
             if ttl <= 64:
                 return "Linux/Unix"
             elif ttl <= 128:
@@ -345,54 +345,54 @@ def detect_os(ip: str, timeout: float = 1.0) -> str:
 
 
 def detect_firewall(ip: str, port: int, timeout: float = 1.0) -> str:
-    """Distingue les différents types de filtrage réseau sur un port.
+    """Distinguishes between different types of network filtering on a port.
 
-    Analyse la réponse à un paquet SYN pour déterminer si un pare-feu est actif :
-      - SYN-ACK reçu    → "open"            (port ouvert)
-      - RST reçu        → "closed"          (port fermé, pas de pare-feu)
-      - ICMP reçu       → "filtered-active" (pare-feu REJECT — envoie un message d'erreur)
-      - Timeout         → "filtered-silent" (pare-feu DROP — silence total)
+    Analyses the response to a SYN packet to determine whether a firewall is active:
+      - SYN-ACK received → "open"            (port open)
+      - RST received     → "closed"          (port closed, no firewall)
+      - ICMP received    → "filtered-active" (firewall REJECT — sends an error message)
+      - Timeout          → "filtered-silent" (firewall DROP — complete silence)
 
-    Sans scapy ou sans sudo, utilise scan_port_connect comme repli (retourne
-    "open", "closed" ou "filtered" sans distinguer les types de filtrage).
+    Without scapy or sudo, falls back to scan_port_connect (returns
+    "open", "closed" or "filtered" without distinguishing filtering types).
 
     Returns:
         "open" | "closed" | "filtered-silent" | "filtered-active" | "filtered"
 
-    Note : le champ "firewall" dans les résultats est "" quand le check n'a pas été exécuté
-    (port non filtré, ou --firewall-detect non activé). Une valeur vide ne signifie pas
-    l'absence de pare-feu.
+    Note: the "firewall" field in results is "" when the check was not run
+    (port not filtered, or --firewall-detect not enabled). An empty value does not mean
+    the absence of a firewall.
     """
     import os as _os
 
     if not SCAPY_AVAILABLE or getattr(_os, "geteuid", lambda: 1)() != 0:
-        # Repli sur TCP connect standard si scapy/sudo indisponible
+        # Fall back to standard TCP connect if scapy/sudo is unavailable
         return scan_port_connect(ip, port, timeout=timeout)
 
     pkt = IP(dst=ip) / TCP(dport=port, flags="S")
     resp = sr1(pkt, timeout=timeout)
 
     if resp is None:
-        # Aucune réponse : le pare-feu DROP silencieusement les paquets
+        # No response: the firewall silently DROPs packets
         return "filtered-silent"
 
     if resp.haslayer(TCP):
         flags = int(resp[TCP].flags)
         if flags & 0x12 == 0x12:
-            # Ferme la connexion half-open avant de retourner le résultat
+            # Close the half-open connection before returning the result
             rst = IP(dst=ip) / TCP(dport=port, sport=resp[TCP].dport, flags="R", seq=resp[TCP].ack)
             send(rst)
-            return "open"      # SYN-ACK → port ouvert
+            return "open"      # SYN-ACK → port open
         if flags & 0x04:
-            return "closed"    # RST → port fermé, pas de pare-feu devant
+            return "closed"    # RST → port closed, no firewall in front
 
     if resp.haslayer(ICMP):
-        # ICMP port-unreachable : le pare-feu REJECT (rejette activement)
+        # ICMP port-unreachable: the firewall REJECTs (actively rejects)
         return "filtered-active"
 
     return "filtered-silent"
 
 
 if __name__ == "__main__":
-    # Vérification rapide
+    # Quick sanity check
     print(scan_port_connect("127.0.0.1", 80))

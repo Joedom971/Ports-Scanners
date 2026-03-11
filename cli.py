@@ -1,8 +1,8 @@
-"""Interface CLI interactive pour le scanner de ports.
+"""Interactive CLI interface for the port scanner.
 
-Lance un assistant simple pas-à-pas.
+Launches a simple step-by-step wizard.
 
-Utilisation :
+Usage:
   python cli.py
 """
 
@@ -10,11 +10,11 @@ import os
 
 
 def _print_safe(text: str) -> None:
-    """Affiche du texte en remplaçant les caractères non-ASCII si nécessaire."""
+    """Prints text, replacing non-ASCII characters if necessary."""
     try:
         print(text)
     except UnicodeEncodeError:
-        # Remplacement des caractères de bordure par des équivalents ASCII
+        # Replace border characters with their ASCII equivalents
         ascii_text = (text
             .replace("╔", "+").replace("╗", "+").replace("╚", "+").replace("╝", "+")
             .replace("║", "|").replace("═", "=").replace("─", "-")
@@ -23,19 +23,22 @@ def _print_safe(text: str) -> None:
         print(ascii_text)
 
 
-# ── Vitesse → paramètres techniques ───────────────────────────────────────────
-# Chaque vitesse configure automatiquement threads, timeout, délai et options de furtivité.
-# L'utilisateur choisit une vitesse simple ; les détails techniques sont gérés ici.
+# ── Speed → technical parameters ──────────────────────────────────────────────
+# Each speed automatically configures threads, timeout, delay and stealth options.
+# The user picks a simple speed; the technical details are handled here.
 VITESSES = {
+    # LAN: short timeout, many threads — responses arrive in < 10ms on a local network
     "Rapide  (réseau local)":    {"threads": 400, "timeout": 0.3, "delay": 0.0, "jitter": 0.0,  "max_rate": 0.0,  "randomize": False},
-    "Normal  (recommandé)":      {"threads": 100, "timeout": 1.0, "delay": 0.0, "jitter": 0.0,  "max_rate": 0.0,  "randomize": False},
+    # Normal: balanced for LAN/WAN — timeout reduced to 0.5s, more threads to compensate
+    "Normal  (recommandé)":      {"threads": 200, "timeout": 0.5, "delay": 0.0, "jitter": 0.0,  "max_rate": 0.0,  "randomize": False},
+    # Slow: fewer threads and inter-port delay to reduce network noise
     "Lent    (discret)":         {"threads": 20,  "timeout": 2.0, "delay": 0.1, "jitter": 0.0,  "max_rate": 0.0,  "randomize": False},
-    # Mode furtif : peu de threads, débit limité à 2 paquets/s, ordre des ports aléatoire
+    # Stealth: few threads, rate limited to 2 packets/s, randomised port order
     "Furtif  (anti-détection)":  {"threads": 5,   "timeout": 3.0, "delay": 0.0, "jitter": 0.0,  "max_rate": 2.0,  "randomize": True},
 }
 
-# ── Profils de scan ────────────────────────────────────────────────────────────
-# Associe chaque profil à une spécification de ports (None = l'utilisateur saisit lui-même)
+# ── Scan profiles ──────────────────────────────────────────────────────────────
+# Maps each profile to a port specification (None = the user enters their own)
 PROFILS = {
     "Scan rapide   — ports courants (web, SSH, bureau à distance)": "22,80,443,3389,8080",
     "Scan standard — tous les ports réservés (1 à 1024)":          "1-1024",
@@ -45,7 +48,7 @@ PROFILS = {
 
 
 def choisir(question: str, options: list, defaut_idx: int = 0) -> str:
-    """Affiche un menu numéroté et retourne l'option choisie par l'utilisateur."""
+    """Displays a numbered menu and returns the option chosen by the user."""
     print(f"\n  {question}")
     for i, opt in enumerate(options, 1):
         marqueur = "  ← recommandé" if i == defaut_idx + 1 else ""
@@ -53,7 +56,7 @@ def choisir(question: str, options: list, defaut_idx: int = 0) -> str:
     while True:
         rep = input(f"  Votre choix [Entrée = {defaut_idx + 1}] : ").strip()
         if not rep:
-            # Entrée vide → on prend le choix par défaut
+            # Empty input → use the default choice
             return options[defaut_idx]
         if rep.isdigit() and 1 <= int(rep) <= len(options):
             return options[int(rep) - 1]
@@ -61,24 +64,24 @@ def choisir(question: str, options: list, defaut_idx: int = 0) -> str:
 
 
 def demander(question: str, defaut: str = "") -> str:
-    """Affiche une question et retourne la saisie de l'utilisateur (ou la valeur par défaut)."""
+    """Displays a question and returns the user's input (or the default value)."""
     indication = f" [Entrée = {defaut}]" if defaut else ""
     rep = input(f"  {question}{indication} : ").strip()
-    return rep if rep else defaut  # si l'utilisateur appuie sur Entrée, utilise le défaut
+    return rep if rep else defaut  # if the user presses Enter, use the default
 
 
 def oui_non(question: str, defaut: bool = True) -> bool:
-    """Pose une question oui/non et retourne True ou False."""
+    """Asks a yes/no question and returns True or False."""
     indication = "[O/n]" if defaut else "[o/N]"
     rep = input(f"  {question} {indication} : ").strip().lower()
     if not rep:
-        return defaut  # Entrée vide → valeur par défaut
-    # Accepte "o", "oui", "y", "yes" comme réponse positive
+        return defaut  # empty input → default value
+    # Accept "o", "oui", "y", "yes" as a positive answer
     return rep in ("o", "oui", "y", "yes")
 
 
 def separateur(titre: str = "") -> None:
-    """Affiche une ligne de séparation visuelle avec un titre optionnel."""
+    """Displays a visual separator line with an optional title."""
     if titre:
         print(f"\n  ── {titre} {'─' * (44 - len(titre))}")
     else:
@@ -86,11 +89,11 @@ def separateur(titre: str = "") -> None:
 
 
 def main() -> int:
-    # Détecte si le programme tourne avec les droits root (uid 0)
-    # getattr avec lambda évite l'erreur sur Windows où os.geteuid n'existe pas
+    # Detect whether the program is running with root privileges (uid 0)
+    # getattr with a lambda avoids an error on Windows where os.geteuid does not exist
     est_root = getattr(os, "geteuid", lambda: 1)() == 0
 
-    # Affichage de l'en-tête avec le mode de scan détecté automatiquement
+    # Display the header with the automatically detected scan mode
     _print_safe("\n╔══════════════════════════════════════════════╗")
     _print_safe("║          Scanner de ports réseau             ║")
     if est_root:
@@ -115,7 +118,7 @@ def main() -> int:
     )
     ports = PROFILS[profil_choisi]
     if ports is None:
-        # Profil "Personnalisé" : l'utilisateur saisit ses propres ports
+        # "Custom" profile: the user enters their own ports
         print("\n  Exemples : 80  |  22,80,443  |  1-1024  |  22,80-85")
         ports = demander("Entrez les ports à scanner", "22,80,443")
 
@@ -124,26 +127,43 @@ def main() -> int:
     vitesse_choisie = choisir(
         "Choisissez une vitesse :",
         list(VITESSES.keys()),
-        defaut_idx=1,  # "Normal" est recommandé par défaut
+        defaut_idx=1,  # "Normal" is the recommended default
     )
-    # Récupère les paramètres techniques associés à la vitesse choisie
+    # Retrieve the technical parameters associated with the chosen speed
     perf = VITESSES[vitesse_choisie]
 
     # ── 4. Options extras ─────────────────────────────────────────────────────
     separateur("Options supplémentaires")
-    print("  (Entrée = non pour toutes)")
-    discover = oui_non(
-        "Chercher d'abord les appareils actifs sur le réseau ?",
-        defaut=False,
-    )
-    banner = oui_non(
-        "Afficher les infos des services trouvés (version, bannière) ?",
-        defaut=False,
-    )
-    version_detect = oui_non(
-        "Détecter la version des services trouvés (ex: Apache/2.4) ?",
-        defaut=False,
-    )
+
+    if est_root:
+        # In SYN scan mode, several options are automatically disabled to preserve stealth.
+        # Each disabled option is explained so the user understands why it is unavailable.
+        print("  Mode SYN actif — options incompatibles avec la furtivité désactivées :\n")
+        print("  [✗] Découverte réseau  — ARP sweep / ping ICMP génèrent du bruit détectable")
+        print("      avant même le début du scan de ports.")
+        print("  [✗] Banner grabbing    — ouvre une connexion TCP complète (SYN+ACK+ACK)")
+        print("      enregistrée dans les logs applicatifs du serveur cible.")
+        print("  [✗] Détection version  — même raison que le banner grabbing.")
+        print()
+        discover       = False
+        banner         = False
+        version_detect = False
+    else:
+        print("  (Entrée = non pour toutes)")
+        # In TCP connect mode, all options are available freely
+        discover = oui_non(
+            "Chercher d'abord les appareils actifs sur le réseau ?",
+            defaut=False,
+        )
+        banner = oui_non(
+            "Afficher les infos des services trouvés (version, bannière) ?",
+            defaut=False,
+        )
+        version_detect = oui_non(
+            "Détecter la version des services trouvés (ex: Apache/2.4) ?",
+            defaut=False,
+        )
+
     firewall_detect_asked = oui_non(
         "Détecter le type de pare-feu (DROP silencieux vs REJECT actif) ?",
         defaut=False,
@@ -172,7 +192,7 @@ def main() -> int:
         ],
         defaut_idx=0,
     )
-    # Détermine l'extension du fichier selon le format choisi
+    # Determine the file extension based on the chosen format
     if "HTML" in format_choisi:
         ext = ".html"
     elif ".txt" in format_choisi:
@@ -183,12 +203,12 @@ def main() -> int:
         ext = ".json"
 
     nom_fichier = demander("Nom du fichier de résultats", f"scan_results{ext}")
-    # S'assure que le fichier a bien la bonne extension
+    # Ensure the file has the correct extension
     if not nom_fichier.endswith(ext):
         nom_fichier += ext
 
-    # ── Récapitulatif ─────────────────────────────────────────────────────────
-    # Le type de scan est déterminé automatiquement selon les droits root
+    # ── Summary ───────────────────────────────────────────────────────────────
+    # The scan type is determined automatically based on root privileges
     scan_type_val = "syn" if est_root else "connect"
     threads   = perf["threads"]
     timeout   = perf["timeout"]
@@ -197,7 +217,14 @@ def main() -> int:
     jitter    = perf.get("jitter", 0.0)
     randomize = perf["randomize"]
 
-    # Affiche un résumé de tous les paramètres avant de lancer le scan
+    # In SYN scan mode, force stealth settings regardless of the chosen speed profile:
+    #   - randomize: shuffles port order to avoid sequential scanning signatures (IDS)
+    #   - jitter: adds random variation to inter-packet timing to break regular patterns
+    if est_root:
+        randomize = True
+        jitter = max(jitter, 0.05)  # minimum 50ms jitter if not already set higher
+
+    # Display a summary of all parameters before launching the scan
     _print_safe("\n╔══════════════════════════════════════════════╗")
     _print_safe("║               Récapitulatif                  ║")
     _print_safe("╠══════════════════════════════════════════════╣")
@@ -205,9 +232,12 @@ def main() -> int:
     _print_safe(f"║  Ports       : {ports:<31}║")
     _print_safe(f"║  Vitesse     : {vitesse_choisie.split('(')[0].strip():<31}║")
     _print_safe(f"║  Mode        : {scan_type_val:<31}║")
-    _print_safe(f"║  Découverte  : {'oui' if discover else 'non':<31}║")
-    _print_safe(f"║  Infos srv.  : {'oui' if banner else 'non':<31}║")
-    _print_safe(f"║  Ver. svc    : {'oui' if version_detect else 'non':<31}║")
+    if not est_root:
+        _print_safe(f"║  Découverte  : {'oui' if discover else 'non':<31}║")
+    if not est_root:
+        # Banner and version-detect are only available in TCP connect mode
+        _print_safe(f"║  Infos srv.  : {'oui' if banner else 'non':<31}║")
+        _print_safe(f"║  Ver. svc    : {'oui' if version_detect else 'non':<31}║")
     _print_safe(f"║  Pare-feu    : {'oui' if firewall_detect else 'non':<31}║")
     _print_safe(f"║  Détect. OS  : {'oui' if os_detect else 'non':<31}║")
     _print_safe(f"║  Rapport     : {nom_fichier:<31}║")
@@ -217,11 +247,11 @@ def main() -> int:
         print("\n  Scan annulé.")
         return 0
 
-    # ── Lancement ─────────────────────────────────────────────────────────────
-    # Importe et appelle main.py avec les paramètres construits par le CLI interactif
+    # ── Launch ────────────────────────────────────────────────────────────────
+    # Import and call main.py with the parameters built by the interactive CLI
     from main import main as run_scan
 
-    # Construit la liste d'arguments comme si l'utilisateur les avait tapés en ligne de commande
+    # Build the argument list as if the user had typed them on the command line
     scan_args = [
         "--target",    target,
         "--ports",     ports,
@@ -230,11 +260,11 @@ def main() -> int:
         "--timeout",   str(timeout),
         "--threads",   str(threads),
         "--delay",     str(delay),
-        "--log-level", "WARNING",  # minimise les logs pendant le scan interactif
+        "--log-level", "WARNING",  # minimise log output during interactive scan
         "--max-rate",  str(max_rate),
         "--jitter",    str(jitter),
     ]
-    # Ajoute les flags booléens uniquement s'ils sont activés
+    # Add boolean flags only when they are enabled
     if randomize:
         scan_args.append("--randomize")
     if discover:

@@ -1,5 +1,5 @@
 # output.py
-"""Fonctions d'export des résultats de scan."""
+"""Scan result export functions."""
 
 import csv
 import html as html_lib
@@ -11,9 +11,9 @@ from typing import Dict
 
 
 def write_output(results: Dict[int, dict], output_path: Path, target: str, scan_type: str) -> None:
-    """Écrit les résultats dans le format correspondant à l'extension du fichier."""
+    """Writes results in the format matching the file extension."""
     ext = output_path.suffix.lower()
-    # Aiguille vers la fonction d'écriture selon l'extension du fichier
+    # Route to the appropriate write function based on the file extension
     if ext == ".json":
         _write_json(results, output_path)
     elif ext == ".csv":
@@ -23,14 +23,14 @@ def write_output(results: Dict[int, dict], output_path: Path, target: str, scan_
     elif ext == ".html":
         _write_html(results, output_path, target, scan_type)
     else:
-        # Par défaut : texte brut (.txt ou extension inconnue)
+        # Default: plain text (.txt or unknown extension)
         _write_txt(results, output_path)
 
 
 def _write_txt(results: Dict[int, dict], path: Path) -> None:
-    """Écrit les résultats en texte brut, un port par ligne."""
+    """Writes results as plain text, one port per line."""
     with path.open("w", encoding="utf-8") as f:
-        # sorted() trie les ports par ordre croissant
+        # sorted() sorts ports in ascending order
         for port, info in sorted(results.items()):
             version_str = f"  [{info['version']}]" if info.get("version") else ""
             fw_str = f" ({info['firewall']})" if info.get("firewall") else ""
@@ -38,16 +38,16 @@ def _write_txt(results: Dict[int, dict], path: Path) -> None:
 
 
 def _write_json(results: Dict[int, dict], path: Path) -> None:
-    """Écrit les résultats en JSON structuré."""
+    """Writes results as structured JSON."""
     with path.open("w", encoding="utf-8") as f:
-        # Les clés JSON doivent être des chaînes → conversion str(p)
+        # JSON keys must be strings → convert with str(p)
         json.dump({str(p): info for p, info in results.items()}, f, indent=2)
 
 
 def _write_csv(results: Dict[int, dict], path: Path) -> None:
-    """Écrit les résultats en CSV (compatible Excel/tableur)."""
+    """Writes results as CSV (Excel/spreadsheet compatible)."""
     with path.open("w", encoding="utf-8", newline="") as f:
-        # DictWriter génère automatiquement les en-têtes et les lignes
+        # DictWriter automatically generates headers and rows
         writer = csv.DictWriter(f, fieldnames=["port", "status", "service", "banner", "os", "version", "firewall"])
         writer.writeheader()
         for port, info in sorted(results.items()):
@@ -63,9 +63,9 @@ def _write_csv(results: Dict[int, dict], path: Path) -> None:
 
 
 def _write_xml(results: Dict[int, dict], path: Path, target: str, scan_type: str) -> None:
-    """Génère un rapport XML compatible avec le format Nmap/Metasploit.
+    """Generates an XML report compatible with the Nmap/Metasploit format.
 
-    Structure :
+    Structure:
       <nmaprun scanner="port-scanner" target="..." type="...">
         <host>
           <address addr="..." addrtype="ipv4"/>
@@ -73,7 +73,7 @@ def _write_xml(results: Dict[int, dict], path: Path, target: str, scan_type: str
             <port protocol="tcp" portid="22">
               <state state="open"/>
               <service name="ssh" version="..." banner="..."/>
-              <firewall type="..."/>  <!-- seulement si présent -->
+              <firewall type="..."/>  <!-- only if present -->
             </port>
           </ports>
         </host>
@@ -88,7 +88,7 @@ def _write_xml(results: Dict[int, dict], path: Path, target: str, scan_type: str
         port_elem = ET.SubElement(ports_elem, "port", protocol="tcp", portid=str(port))
         ET.SubElement(port_elem, "state", state=info.get("status", "unknown"))
 
-        # Attributs du service : nom obligatoire, version et bannière optionnels
+        # Service attributes: name is mandatory, version and banner are optional
         svc_attrs: dict = {"name": info.get("service", "")}
         if info.get("version"):
             svc_attrs["version"] = info["version"]
@@ -96,37 +96,37 @@ def _write_xml(results: Dict[int, dict], path: Path, target: str, scan_type: str
             svc_attrs["banner"] = info["banner"]
         ET.SubElement(port_elem, "service", **svc_attrs)
 
-        # Élément firewall uniquement si le type de filtrage a été détecté
+        # Firewall element only if a filtering type was detected
         if info.get("firewall"):
             ET.SubElement(port_elem, "firewall", type=info["firewall"])
 
-    # ET.indent() ajoute de l'indentation lisible (Python 3.9+)
+    # ET.indent() adds human-readable indentation (Python 3.9+)
     ET.indent(root, space="  ")
     tree = ET.ElementTree(root)
     tree.write(str(path), encoding="utf-8", xml_declaration=True)
 
 
 def _write_html(results: Dict[int, dict], path: Path, target: str, scan_type: str) -> None:
-    """Génère un rapport HTML coloré avec tableau et statistiques."""
+    """Generates a coloured HTML report with a table and statistics."""
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    # Comptage des ports par statut pour les statistiques
+    # Count ports by status for the statistics section
     counts = {"open": 0, "closed": 0, "filtered": 0}
     for info in results.values():
         counts[info["status"]] = counts.get(info["status"], 0) + 1
 
-    # Couleurs associées à chaque statut (vert = ouvert, rouge = fermé, gris = filtré)
+    # Colours associated with each status (green = open, red = closed, grey = filtered)
     color_map = {"open": "#2ecc71", "closed": "#e74c3c", "filtered": "#95a5a6"}
 
-    # html_lib.escape() protège contre les injections HTML en échappant <, >, &, "
+    # html_lib.escape() protects against HTML injection by escaping <, >, &, "
     safe_target = html_lib.escape(target)
     safe_scan_type = html_lib.escape(scan_type)
 
-    # Construction des lignes du tableau HTML
+    # Build the HTML table rows
     rows = ""
     for port, info in sorted(results.items()):
         color = color_map.get(info["status"], "#fff")
-        # La couleur est appliquée en fond transparent (22 = opacité 13% en hexadécimal)
+        # The colour is applied as a transparent background (22 = 13% opacity in hexadecimal)
         rows += (
             f"<tr style='background:{color}22'>"
             f"<td>{port}</td>"
@@ -138,7 +138,7 @@ def _write_html(results: Dict[int, dict], path: Path, target: str, scan_type: st
             f"</tr>\n"
         )
 
-    # Template HTML complet avec CSS intégré (pas de dépendance externe)
+    # Full HTML template with embedded CSS (no external dependency)
     html = f"""<!DOCTYPE html>
 <html lang="fr">
 <head><meta charset="UTF-8"><title>Scan — {safe_target}</title>
@@ -168,3 +168,64 @@ def _write_html(results: Dict[int, dict], path: Path, target: str, scan_type: st
 </body>
 </html>"""
     path.write_text(html, encoding="utf-8")
+
+
+# --- FEATURE  : STATISTIK GENERATOR ---
+def print_summary(results: Dict[int, dict], elapsed: float) -> None:
+    """Prints an analytical scan summary to the console.
+
+    Calculates and displays:
+      - the total number of ports scanned
+      - the open / closed / filtered breakdown (all variants combined)
+      - the firewall-silent and firewall-active detail if available
+      - the percentage of open ports
+      - the execution time
+
+    Args:
+        results: port -> info dictionary returned by the scan (same format as write_output).
+        elapsed: scan duration in seconds (time.time() end - time.time() start).
+    """
+    # Count ports by status
+    open_count = 0
+    for info in results.values():
+        if info["status"] == "open":
+            open_count += 1
+
+    closed_count = 0
+    for info in results.values():
+        if info["status"] == "closed":
+            closed_count += 1
+
+    # Count filtered ports — status is always "filtered" from the scanner.
+    # The firewall type detail (silent/active) is stored in info["firewall"], not info["status"].
+    filtered_count = sum(
+        1 for info in results.values()
+        if info["status"] == "filtered"
+    )
+
+    # Filtering type detail (the "firewall" field is only populated with --firewall-detect)
+    firewall_silent = 0
+    firewall_active = 0
+    for info in results.values():
+        firewall = info.get("firewall", "")  # "" if --firewall-detect not enabled
+        if firewall == "filtered-silent":
+            firewall_silent += 1
+        elif firewall == "filtered-active":
+            firewall_active += 1
+
+    total = len(results)  # total number of ports scanned
+
+    # Percentage of open ports — guard against division by zero
+    pourcentage = (open_count / total * 100) if total > 0 else 0.0
+
+    print("\n--- Résumé du Scan ---")
+    print(f"  Ports scannés   : {total}")
+    print(f"  Ports ouverts   : {open_count}")
+    print(f"  Ports fermés    : {closed_count}")
+    print(f"  Ports filtrés   : {filtered_count}", end="")
+    # Display the silent/active detail only if firewall data is available
+    if firewall_silent or firewall_active:
+        print(f"  (silent: {firewall_silent}, active: {firewall_active})", end="")
+    print()
+    print(f"  Taux d'ouverts  : {pourcentage:.2f}%")
+    print(f"  Temps d'exécut. : {elapsed:.2f} secondes")

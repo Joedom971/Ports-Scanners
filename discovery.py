@@ -1,4 +1,4 @@
-"""Découverte d'hôtes : balayage ARP (scapy) avec repli ICMP (ping)."""
+"""Host discovery: ARP sweep (scapy) with ICMP ping fallback."""
 
 import ipaddress
 import platform
@@ -6,8 +6,8 @@ import subprocess
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List
 
-# Tentative d'import de scapy pour le balayage ARP.
-# Si scapy n'est pas installé, on utilisera le ping ICMP à la place.
+# Attempt to import scapy for the ARP sweep.
+# If scapy is not installed, ICMP ping will be used instead.
 try:
     from scapy.all import ARP, Ether, srp
     SCAPY_AVAILABLE = True
@@ -16,81 +16,81 @@ except ImportError:
 
 
 def discover_hosts(network: str, timeout: float = 1.0) -> List[str]:
-    """Découvre les hôtes actifs sur un réseau ou vérifie une IP unique.
+    """Discovers active hosts on a network or checks a single IP.
 
-    Utilise ARP si scapy disponible, sinon ICMP ping.
+    Uses ARP if scapy is available, otherwise falls back to ICMP ping.
 
     Args:
-        network: sous-réseau CIDR (ex. "192.168.1.0/24") ou IP unique.
-        timeout: délai d'attente par hôte.
+        network: CIDR subnet (e.g. "192.168.1.0/24") or single IP.
+        timeout: wait delay per host.
 
     Returns:
-        Liste des IPs actives.
+        List of active IPs.
     """
     if SCAPY_AVAILABLE:
         try:
-            # ARP est plus fiable sur un réseau local (LAN) car il opère au niveau Ethernet
+            # ARP is more reliable on a local network (LAN) as it operates at the Ethernet level
             return _arp_sweep(network, timeout)
         except Exception:
-            pass  # si ARP échoue (ex. interface réseau non supportée), on bascule sur ICMP
-    # Repli sur le ping ICMP, compatible avec tous les systèmes
+            pass  # if ARP fails (e.g. unsupported network interface), fall back to ICMP
+    # Fall back to ICMP ping, compatible with all systems
     return _icmp_sweep(network, timeout)
 
 
 def _arp_sweep(network: str, timeout: float) -> List[str]:
-    """Envoie des requêtes ARP sur le sous-réseau."""
-    # Ether(dst="ff:ff:ff:ff:ff:ff") = trame Ethernet diffusée à toutes les machines du réseau
-    # ARP(pdst=network) = demande "qui a cette IP ?" à toutes les adresses du sous-réseau
+    """Sends ARP requests across the subnet."""
+    # Ether(dst="ff:ff:ff:ff:ff:ff") = Ethernet frame broadcast to all machines on the network
+    # ARP(pdst=network) = asks "who has this IP?" for every address in the subnet
     pkt = Ether(dst="ff:ff:ff:ff:ff:ff") / ARP(pdst=network)
-    # srp = send/receive au niveau Ethernet ; answered = liste des réponses reçues
+    # srp = send/receive at the Ethernet level; answered = list of received replies
     answered, _ = srp(pkt, timeout=timeout, verbose=False)
-    # Pour chaque réponse, extrait l'adresse IP source (psrc = protocol source)
+    # For each reply, extract the source IP address (psrc = protocol source)
     return [rcv.psrc for _, rcv in answered]
 
 
 def _icmp_sweep(network: str, timeout: float) -> List[str]:
-    """Ping chaque hôte du réseau en parallèle."""
+    """Pings each host on the network in parallel."""
     try:
-        # Calcule la liste de toutes les IPs du sous-réseau CIDR
-        # ex. "192.168.1.0/24" → ["192.168.1.1", "192.168.1.2", ..., "192.168.1.254"]
+        # Compute the list of all IPs in the CIDR subnet
+        # e.g. "192.168.1.0/24" → ["192.168.1.1", "192.168.1.2", ..., "192.168.1.254"]
         net = ipaddress.ip_network(network, strict=False)
-        hosts = [str(h) for h in net.hosts()]  # .hosts() exclut l'adresse réseau et le broadcast
+        hosts = [str(h) for h in net.hosts()]  # .hosts() excludes the network and broadcast addresses
     except ValueError:
-        # Ce n'est pas un CIDR valide → on traite comme une IP unique
+        # Not a valid CIDR → treat as a single IP
         hosts = [network]
 
-    # Détecte le système d'exploitation pour construire la commande ping adaptée
-    system = platform.system()  # "Darwin", "Linux" ou "Windows"
+    # Detect the operating system to build the appropriate ping command
+    system = platform.system()  # "Darwin", "Linux" or "Windows"
     active: List[str] = []
 
     def ping(ip: str):
-        """Lance un ping unique vers une IP et retourne l'IP si elle répond."""
+        """Sends a single ping to an IP and returns the IP if it responds."""
         if system == "Windows":
-            # Windows : -n = nombre de paquets, -w = timeout en millisecondes
+            # Windows: -n = packet count, -w = timeout in milliseconds
             timeout_ms = max(1, int(timeout * 1000))
             cmd = ["ping", "-n", "1", "-w", str(timeout_ms), ip]
         elif system == "Darwin":
-            # macOS : -c = nombre de paquets, -W = timeout en millisecondes
+            # macOS: -c = packet count, -W = timeout in milliseconds
             timeout_ms = max(1, int(timeout * 1000))
             cmd = ["ping", "-c", "1", "-W", str(timeout_ms), ip]
         else:
-            # Linux : -c = nombre de paquets, -W = timeout en secondes (entier)
+            # Linux: -c = packet count, -W = timeout in seconds (integer)
             timeout_s = max(1, int(timeout))
             cmd = ["ping", "-c", "1", "-W", str(timeout_s), ip]
 
         try:
             result = subprocess.run(
-                cmd,  # -c 1 = 1 seul paquet
-                stdout=subprocess.DEVNULL,  # ignore la sortie standard
-                stderr=subprocess.DEVNULL,  # ignore les erreurs
+                cmd,  # -c 1 = 1 packet only
+                stdout=subprocess.DEVNULL,  # discard standard output
+                stderr=subprocess.DEVNULL,  # discard errors
                 timeout=timeout + 2,
             )
-            # returncode == 0 signifie que le ping a reçu une réponse
+            # returncode == 0 means the ping received a reply
             return ip if result.returncode == 0 else None
         except (subprocess.TimeoutExpired, FileNotFoundError):
             return None
 
-    # Lance tous les pings en parallèle pour aller beaucoup plus vite
+    # Run all pings in parallel for much faster execution
     with ThreadPoolExecutor(max_workers=100) as executor:
         futures = {executor.submit(ping, h): h for h in hosts}
         for future in as_completed(futures):
@@ -98,5 +98,5 @@ def _icmp_sweep(network: str, timeout: float) -> List[str]:
             if ip:
                 active.append(ip)
 
-    # Retourne la liste triée par ordre numérique d'adresse IP
+    # Return the list sorted in numerical IP address order
     return sorted(active)

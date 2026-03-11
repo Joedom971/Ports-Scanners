@@ -1,16 +1,16 @@
 # main.py
-"""Interface en ligne de commande pour le scanner de ports.
+"""Command-line interface for the port scanner.
 
-Supporte :
-  - hôte / adresse IP cible ou sous-réseau CIDR
-  - plage de ports (ex. 1-1024, 22,80,443, ou combinaison)
-  - SYN scan (nécessite scapy + sudo) ou TCP connect
-  - scan parallèle (ThreadPoolExecutor)
-  - host discovery (ARP ou ICMP)
+Supports:
+  - target host / IP address or CIDR subnet
+  - port ranges (e.g. 1-1024, 22,80,443, or a combination)
+  - SYN scan (requires scapy + sudo) or TCP connect
+  - parallel scan (ThreadPoolExecutor)
+  - host discovery (ARP or ICMP)
   - banner grabbing, service names, rate limiting
-  - export console + fichier (.txt/.json/.csv/.html)
+  - console + file export (.txt/.json/.csv/.html)
 
-Utilisation :
+Usage:
   python main.py --target 192.168.1.1 --ports 20-1024 --output scan.json
   python main.py --target 192.168.1.0/24 --discover --ports 22,80 --scan-type syn
 """
@@ -18,6 +18,7 @@ Utilisation :
 import argparse
 import logging
 import sys
+import time
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -33,10 +34,10 @@ from scanner import (
     scan_range_threaded,
     SCAPY_AVAILABLE,
 )
-from output import write_output
+from output import write_output, print_summary
 
-# Tentative d'import de tqdm pour afficher une barre de progression.
-# Si tqdm n'est pas installé, on continue sans barre.
+# Attempt to import tqdm to display a progress bar.
+# If tqdm is not installed, execution continues without a bar.
 try:
     from tqdm import tqdm
     TQDM_AVAILABLE = True
@@ -45,42 +46,42 @@ except ImportError:
 
 
 def valider_port(port: int) -> int:
-    """Vérifie qu'un port est dans la plage valide (1-65535)."""
+    """Checks that a port is within the valid range (1-65535)."""
     if not 1 <= port <= 65535:
         raise ValueError(f"Port invalide : {port} (doit être entre 1 et 65535)")
     return port
 
 
 def valider_cible(cible: str) -> str:
-    """Vérifie qu'une cible est une IP, un hostname ou un CIDR valide."""
+    """Checks that a target is a valid IP, hostname, or CIDR."""
     import ipaddress
     cible = cible.strip()
     if not cible:
         raise ValueError("La cible ne peut pas être vide.")
-    # Tentative de parsing CIDR (ex. "192.168.1.0/24")
+    # Attempt to parse as CIDR (e.g. "192.168.1.0/24")
     try:
         ipaddress.ip_network(cible, strict=False)
         return cible
     except ValueError:
         pass
-    # Tentative de parsing comme adresse IP simple (IPv4 ou IPv6)
+    # Attempt to parse as a plain IP address (IPv4 or IPv6)
     try:
         ipaddress.ip_address(cible)
         return cible
     except ValueError:
         pass
-    # Hostname / IP simple : vérification basique des caractères autorisés
+    # Hostname / plain IP: basic check of allowed characters
     caracteres_autorises = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-_")
     if not all(c in caracteres_autorises for c in cible):
         raise ValueError(f"Cible invalide : '{cible}' contient des caractères non autorisés.")
     if len(cible) > 253:
-        # La norme DNS limite les noms d'hôte à 253 caractères maximum
+        # The DNS standard limits hostnames to 253 characters maximum
         raise ValueError(f"Cible invalide : nom d'hôte trop long ({len(cible)} caractères).")
     return cible
 
 
 def valider_fichier_sortie(chemin: str) -> Path:
-    """Vérifie que le chemin de sortie est sûr (extension valide, pas de traversée relative)."""
+    """Checks that the output path is safe (valid extension, no relative traversal)."""
     chemin = chemin.strip()
     if not chemin:
         raise ValueError("Le nom du fichier de sortie ne peut pas être vide.")
@@ -88,7 +89,7 @@ def valider_fichier_sortie(chemin: str) -> Path:
     path = Path(chemin)
     if path.suffix.lower() not in extensions_valides:
         raise ValueError(f"Extension invalide : '{path.suffix}'. Utilisez .txt, .json, .csv, .html ou .xml.")
-    # Bloquer la traversée de répertoire dans les chemins relatifs (ex. ../../etc/passwd)
+    # Block directory traversal in relative paths (e.g. ../../etc/passwd)
     if not path.is_absolute():
         try:
             path.resolve().relative_to(Path.cwd().resolve())
@@ -98,37 +99,37 @@ def valider_fichier_sortie(chemin: str) -> Path:
 
 
 def parse_ports(port_str: str) -> List[int]:
-    """Convertit une spécification de ports en liste d'entiers.
+    """Converts a port specification string into a list of integers.
 
-    Accepte : "22", "20-25", "22,80,443", "22,80-85"
+    Accepts: "22", "20-25", "22,80,443", "22,80-85"
     """
     ports: List[int] = []
     try:
-        # Découpe la chaîne par les virgules (ex. "22,80-85" → ["22", "80-85"])
+        # Split the string by commas (e.g. "22,80-85" → ["22", "80-85"])
         for part in port_str.split(","):
             part = part.strip()
             if not part:
                 continue
             if "-" in part:
-                # Plage de ports : "80-85" → ports 80, 81, 82, 83, 84, 85
+                # Port range: "80-85" → ports 80, 81, 82, 83, 84, 85
                 start_str, end_str = part.split("-", 1)
                 start, end = valider_port(int(start_str)), valider_port(int(end_str))
                 if start > end:
-                    start, end = end, start  # corrige si l'ordre est inversé (ex. "85-80")
+                    start, end = end, start  # fix reversed range (e.g. "85-80")
                 ports.extend(range(start, end + 1))
             else:
-                # Port unique
+                # Single port
                 ports.append(valider_port(int(part)))
     except (ValueError, TypeError) as e:
         raise ValueError(f"Spécification de ports invalide : {e}")
     if not ports:
         raise ValueError("Aucun port valide trouvé dans la spécification.")
-    # sorted(set(...)) : supprime les doublons et trie par ordre croissant
+    # sorted(set(...)) : remove duplicates and sort in ascending order
     return sorted(set(ports))
 
 
 def main(args: Optional[List[str]] = None) -> int:
-    # Définition de tous les arguments acceptés en ligne de commande
+    # Define all accepted command-line arguments
     parser = argparse.ArgumentParser(description="Scanner de ports TCP")
     parser.add_argument("--target", required=True, help="Hôte, IP ou sous-réseau CIDR cible")
     parser.add_argument("--ports", required=True,
@@ -164,13 +165,13 @@ def main(args: Optional[List[str]] = None) -> int:
 
     parsed = parser.parse_args(args=args)
 
-    # Configuration du système de logs (DEBUG = très verbeux, WARNING = seulement les alertes)
+    # Configure the logging system (DEBUG = very verbose, WARNING = alerts only)
     logging.basicConfig(
         level=getattr(logging, parsed.log_level),
         format="%(asctime)s [%(levelname)s] %(message)s",
     )
 
-    # Validation des valeurs numériques avant de commencer le scan
+    # Validate numeric values before starting the scan
     if parsed.timeout <= 0:
         print("Erreur : --timeout doit être strictement positif.")
         return 1
@@ -187,11 +188,11 @@ def main(args: Optional[List[str]] = None) -> int:
         print("Erreur : --jitter doit être >= 0.")
         return 1
     if parsed.max_rate > 0 and parsed.threads > 1:
-        # En mode max-rate, les envois sont sérialisés → plusieurs threads ne servent à rien
+        # In max-rate mode, sends are serialised → multiple threads have no effect
         print(f"Note : --max-rate sérialise les envois — --threads {parsed.threads} n'a pas d'effet. "
               f"Les paquets seront envoyés à {parsed.max_rate} pkt/s.")
 
-    # Sanitisation des entrées utilisateur (protection contre les valeurs malformées)
+    # Sanitise user inputs (protection against malformed values)
     try:
         target_sanitise = valider_cible(parsed.target)
         ports = parse_ports(parsed.ports)
@@ -200,28 +201,28 @@ def main(args: Optional[List[str]] = None) -> int:
         print(f"Erreur : {e}")
         return 1
 
-    # Crée le dossier de destination si le chemin de sortie contient des sous-dossiers
+    # Create the destination directory if the output path contains subdirectories
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Sélection de la fonction de scan selon le type demandé
+    # Select the scan function based on the requested type
     if parsed.scan_type == "syn":
         if not SCAPY_AVAILABLE:
             print("AVERTISSEMENT : scapy non disponible. Installez-le : pip install scapy")
             print("Fallback sur TCP connect.")
             scan_fn = scan_port_connect
         else:
-            scan_fn = scan_port_syn  # scan SYN via raw packets
+            scan_fn = scan_port_syn  # SYN scan via raw packets
     else:
-        scan_fn = scan_port_connect  # scan TCP connect standard
+        scan_fn = scan_port_connect  # standard TCP connect scan
 
-    # Résolution DNS unique : on résout le nom d'hôte une seule fois au lieu de le résoudre
-    # à chaque port scanné (évite N requêtes DNS pour N ports).
-    # Les CIDR (ex. 192.168.1.0/24) sont traités par discover_hosts → pas de résolution ici.
+    # Single DNS resolution: resolve the hostname once instead of once per scanned port
+    # (avoids N DNS queries for N ports).
+    # CIDRs (e.g. 192.168.1.0/24) are handled by discover_hosts → no resolution here.
     import ipaddress as _ipaddress
     _is_cidr = False
     try:
         _ipaddress.ip_network(target_sanitise, strict=False)
-        _is_cidr = "/" in target_sanitise  # vérifie que c'est bien un réseau, pas une IP seule
+        _is_cidr = "/" in target_sanitise  # confirm it is a network, not a plain IP
     except ValueError:
         pass
     if not _is_cidr:
@@ -231,7 +232,7 @@ def main(args: Optional[List[str]] = None) -> int:
             print(f"Erreur : impossible de résoudre '{target_sanitise}' — {e}")
             return 1
 
-    # Host discovery : détecte les machines actives sur le réseau avant de scanner leurs ports
+    # Host discovery: detect active machines on the network before scanning their ports
     if parsed.discover:
         from discovery import discover_hosts
         logging.info(f"Host discovery sur {target_sanitise}...")
@@ -241,16 +242,20 @@ def main(args: Optional[List[str]] = None) -> int:
             return 1
         print(f"{len(targets)} hôte(s) actif(s) : {', '.join(targets)}")
     else:
-        # Pas de discovery : on scanne uniquement la cible fournie
+        # No discovery: scan only the provided target
         targets = [target_sanitise]
 
-    # Dictionnaire pour stocker les résultats de tous les hôtes scannés
+    # Dictionary to store results for all scanned hosts
     all_results: Dict[str, Dict[int, dict]] = {}
+
+    # --- FEATURE  : STATISTIK GENERATOR (début) ---
+    # Start the timer before the scan loop to measure total execution time across all hosts
+    start_time = time.time()
 
     for target in targets:
         print(f"\nScan de {target} — {len(ports)} ports ({parsed.scan_type})")
 
-        # Lance le scan multi-threadé sur tous les ports
+        # Launch the multi-threaded scan over all ports
         raw = scan_range_threaded(
             target, ports, scan_fn,
             timeout=parsed.timeout,
@@ -268,14 +273,14 @@ def main(args: Optional[List[str]] = None) -> int:
             else:
                 logging.warning("OS detection skipped — requires scapy and sudo (root privileges).")
 
-        # Enrichissement : ajoute le nom du service et la bannière à chaque résultat brut
+        # Enrichment: add the service name and banner to each raw result
         results: Dict[int, dict] = {}
-        # tqdm affiche une barre de progression si disponible, sinon itération normale
-        port_iter = tqdm(raw.items(), desc="Enrichissement") if TQDM_AVAILABLE else raw.items()
+        # tqdm shows a progress bar if available, otherwise plain iteration
+        port_iter = tqdm(raw.items(), desc="Loading") if TQDM_AVAILABLE else raw.items()
         for port, status in port_iter:
             service = get_service_name(port)
             banner = ""
-            # Banner grabbing uniquement sur les ports ouverts (inutile sur closed/filtered)
+            # Banner grabbing only on open ports (pointless on closed/filtered)
             if parsed.banner and status == "open":
                 banner = grab_banner(target, port, timeout=parsed.timeout)
             version = ""
@@ -293,32 +298,35 @@ def main(args: Optional[List[str]] = None) -> int:
                 "firewall": firewall,
             }
 
-        # Affichage des résultats dans le terminal, triés par numéro de port
+        # Display results in the terminal, sorted by port number
         for port, info in sorted(results.items()):
             version_str = f"  [{info.get('version')}]" if info.get("version") else ""
             fw_str = f" ({info.get('firewall')})" if info.get("firewall") else ""
             print(f"  {port:5d}  {info['status']:<10}{fw_str:<22} {info['service']:<15} {info['banner']}{version_str}")
 
-        # Calcul et affichage des statistiques globales
-        counts: Dict[str, int] = {}
-        for info in results.values():
-            s = info["status"]
-            counts[s] = counts.get(s, 0) + 1
-        open_count = counts.get("open", 0)
-        closed_count = counts.get("closed", 0)
-        filtered_count = counts.get("filtered", 0) + counts.get("filtered-silent", 0) + counts.get("filtered-active", 0)
-        print(f"\n  open: {open_count}  closed: {closed_count}  filtered: {filtered_count}")
-
         all_results[target] = results
 
-    # Export des résultats dans un fichier
+    # Stop the timer after all hosts have been scanned      ---STATISTIK GENERATOR (fin)---
+    elapsed = time.time() - start_time
+
+    # Merge all host results into a single dict for the global summary
+    # (each host contributes its port entries independently)
+    merged_results: Dict[int, dict] = {}
+    for host_results in all_results.values():
+        merged_results.update(host_results)
+
+    # Display the global analytical summary via output.py
+    print_summary(merged_results, elapsed)
+    # --- FEATURE  : STATISTIK GENERATOR (fin) ---
+
+    # Export results to a file
     if len(all_results) == 1:
-        # Un seul hôte : comportement standard
+        # Single host: standard behaviour
         target_key = list(all_results.keys())[0]
         write_output(all_results[target_key], out_path, target_key, parsed.scan_type)
         print(f"\nRésultats sauvegardés dans {out_path}")
     else:
-        # Plusieurs hôtes : un fichier par hôte (nom_base_IP.ext)
+        # Multiple hosts: one file per host (base_name_IP.ext)
         for host_ip, host_results in all_results.items():
             safe_ip = host_ip.replace(".", "_").replace(":", "_")
             host_path = out_path.parent / f"{out_path.stem}_{safe_ip}{out_path.suffix}"
