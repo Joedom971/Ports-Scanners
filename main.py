@@ -309,14 +309,9 @@ def main(args: Optional[List[str]] = None) -> int:
     # Stop the timer after all hosts have been scanned      ---STATISTIK GENERATOR (fin)---
     elapsed = time.time() - start_time
 
-    # Merge all host results into a single dict for the global summary
-    # (each host contributes its port entries independently)
-    merged_results: Dict[int, dict] = {}
-    for host_results in all_results.values():
-        merged_results.update(host_results)
-
     # Display the global analytical summary via output.py
-    print_summary(merged_results, elapsed)
+    # all_results is passed directly so every (host, port) pair is counted
+    print_summary(all_results, elapsed)
     # --- FEATURE  : STATISTIK GENERATOR (fin) ---
 
     # Export results to a file

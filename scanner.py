@@ -239,18 +239,25 @@ def scan_range_threaded(
             time.sleep(random.uniform(delay, delay + jitter))
         return port, scan_fn(ip, port, timeout=timeout)
 
+    # Launch up to max_workers threads in parallel.
+    # The executor is managed manually (not with `with`) so that Ctrl+C can
+    # call shutdown(wait=False) without being overridden by __exit__(wait=True).
+    executor = ThreadPoolExecutor(max_workers=max_workers)
+    futures = {executor.submit(_scan, p): p for p in ports}
     try:
-        # Launch up to max_workers threads in parallel
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            # Submit all scan tasks to the executor
-            futures = {executor.submit(_scan, p): p for p in ports}
-            # Collect results as they complete
-            for future in as_completed(futures):
-                port, status = future.result()
-                results[port] = status
+        # Collect results as they complete
+        for future in as_completed(futures):
+            port, status = future.result()
+            results[port] = status
     except KeyboardInterrupt:
-        # Ctrl+C: the `with` block cleanly stops the executor before propagating the interrupt
+        # Cancel all pending futures (not yet started) immediately.
+        # cancel_futures=True is available in Python 3.9+.
+        # Already-running threads finish their current sr1() call, but no new ones start.
+        executor.shutdown(wait=False, cancel_futures=True)
         raise
+    finally:
+        # Normal exit: shut down without waiting (all futures already completed above)
+        executor.shutdown(wait=False)
 
     return results
 

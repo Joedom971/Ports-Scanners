@@ -171,49 +171,56 @@ def _write_html(results: Dict[int, dict], path: Path, target: str, scan_type: st
 
 
 # --- FEATURE  : STATISTIK GENERATOR ---
-def print_summary(results: Dict[int, dict], elapsed: float) -> None:
+def print_summary(all_results: Dict[str, Dict[int, dict]], elapsed: float) -> None:
     """Prints an analytical scan summary to the console.
 
     Calculates and displays:
-      - the total number of ports scanned
+      - the total number of (host, port) pairs scanned
       - the open / closed / filtered breakdown (all variants combined)
       - the firewall-silent and firewall-active detail if available
       - the percentage of open ports
       - the execution time
 
     Args:
-        results: port -> info dictionary returned by the scan (same format as write_output).
+        all_results: host -> port -> info dictionary (supports single and multi-host scans).
         elapsed: scan duration in seconds (time.time() end - time.time() start).
     """
+    # Flatten all port info dicts across all hosts into a single list.
+    # This correctly counts every (host, port) pair without overwriting duplicates.
+    all_infos = []
+    for host_results in all_results.values():
+        for info in host_results.values():
+            all_infos.append(info)
+
     # Count ports by status
     open_count = 0
-    for info in results.values():
+    for info in all_infos:
         if info["status"] == "open":
             open_count += 1
 
     closed_count = 0
-    for info in results.values():
+    for info in all_infos:
         if info["status"] == "closed":
             closed_count += 1
 
     # Count filtered ports — status is always "filtered" from the scanner.
     # The firewall type detail (silent/active) is stored in info["firewall"], not info["status"].
-    filtered_count = sum(
-        1 for info in results.values()
-        if info["status"] == "filtered"
-    )
+    filtered_count = 0
+    for info in all_infos:
+        if info["status"] == "filtered":
+            filtered_count += 1
 
     # Filtering type detail (the "firewall" field is only populated with --firewall-detect)
     firewall_silent = 0
     firewall_active = 0
-    for info in results.values():
+    for info in all_infos:
         firewall = info.get("firewall", "")  # "" if --firewall-detect not enabled
         if firewall == "filtered-silent":
             firewall_silent += 1
         elif firewall == "filtered-active":
             firewall_active += 1
 
-    total = len(results)  # total number of ports scanned
+    total = len(all_infos)  # total number of (host, port) pairs scanned
 
     # Percentage of open ports — guard against division by zero
     pourcentage = (open_count / total * 100) if total > 0 else 0.0

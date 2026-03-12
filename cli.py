@@ -144,10 +144,13 @@ def main() -> int:
         print("  [✗] Banner grabbing    — ouvre une connexion TCP complète (SYN+ACK+ACK)")
         print("      enregistrée dans les logs applicatifs du serveur cible.")
         print("  [✗] Détection version  — même raison que le banner grabbing.")
+        print("  [✗] Détection pare-feu — envoie des probes SYN supplémentaires sur chaque port")
+        print("      filtré, ce qui multiplie le trafic détectable.")
         print()
-        discover       = False
-        banner         = False
-        version_detect = False
+        discover        = False
+        banner          = False
+        version_detect  = False
+        firewall_detect = False
     else:
         print("  (Entrée = non pour toutes)")
         # In TCP connect mode, all options are available freely
@@ -164,13 +167,16 @@ def main() -> int:
             defaut=False,
         )
 
-    firewall_detect_asked = oui_non(
-        "Détecter le type de pare-feu (DROP silencieux vs REJECT actif) ?",
-        defaut=False,
-    )
-    if firewall_detect_asked and not est_root:
-        print("  Note : --firewall-detect nécessite sudo (macOS/Linux) ou admin (Windows).")
-    firewall_detect = firewall_detect_asked and est_root
+    # In SYN mode, firewall_detect was already set to False above.
+    # In TCP connect mode, ask the user — firewall-detect needs sudo.
+    if not est_root:
+        firewall_detect_asked = oui_non(
+            "Détecter le type de pare-feu (DROP silencieux vs REJECT actif) ?",
+            defaut=False,
+        )
+        if firewall_detect_asked:
+            print("  Note : --firewall-detect nécessite sudo (macOS/Linux) ou admin (Windows).")
+        firewall_detect = False  # not root → can't use scapy anyway
 
     os_detect_asked = oui_non(
         "Tenter de détecter l'OS de la cible ?",
@@ -224,23 +230,25 @@ def main() -> int:
         randomize = True
         jitter = max(jitter, 0.05)  # minimum 50ms jitter if not already set higher
 
+    # Truncate long values to fit the recap box (31 chars max)
+    def _trunc(val: str, max_len: int = 31) -> str:
+        return val[:28] + "..." if len(val) > max_len else val
+
     # Display a summary of all parameters before launching the scan
     _print_safe("\n╔══════════════════════════════════════════════╗")
     _print_safe("║               Récapitulatif                  ║")
     _print_safe("╠══════════════════════════════════════════════╣")
-    _print_safe(f"║  Cible       : {target:<31}║")
-    _print_safe(f"║  Ports       : {ports:<31}║")
-    _print_safe(f"║  Vitesse     : {vitesse_choisie.split('(')[0].strip():<31}║")
+    _print_safe(f"║  Cible       : {_trunc(target):<31}║")
+    _print_safe(f"║  Ports       : {_trunc(ports):<31}║")
+    _print_safe(f"║  Vitesse     : {_trunc(vitesse_choisie.split('(')[0].strip()):<31}║")
     _print_safe(f"║  Mode        : {scan_type_val:<31}║")
     if not est_root:
         _print_safe(f"║  Découverte  : {'oui' if discover else 'non':<31}║")
-    if not est_root:
-        # Banner and version-detect are only available in TCP connect mode
         _print_safe(f"║  Infos srv.  : {'oui' if banner else 'non':<31}║")
         _print_safe(f"║  Ver. svc    : {'oui' if version_detect else 'non':<31}║")
-    _print_safe(f"║  Pare-feu    : {'oui' if firewall_detect else 'non':<31}║")
+        _print_safe(f"║  Pare-feu    : {'oui' if firewall_detect else 'non':<31}║")
     _print_safe(f"║  Détect. OS  : {'oui' if os_detect else 'non':<31}║")
-    _print_safe(f"║  Rapport     : {nom_fichier:<31}║")
+    _print_safe(f"║  Rapport     : {_trunc(nom_fichier):<31}║")
     _print_safe("╚══════════════════════════════════════════════╝")
 
     if not oui_non("\nLancer le scan ?", defaut=True):
