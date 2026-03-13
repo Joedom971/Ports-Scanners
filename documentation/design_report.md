@@ -34,28 +34,43 @@ Full CLI exposing all options:
 - `--discover` — host discovery before scanning
 - `--banner` — banner grabbing on open ports
 - `--vuln-scan` — vulnerability analysis on open ports using CVE databases
+- `--version-detect` — detect service versions via protocol probes
+- `--os-detect` — detect OS via TTL fingerprinting (requires sudo)
+- `--firewall-detect` — distinguish DROP vs REJECT (requires sudo)
+- `--vuln-scan` — vulnerability analysis on open ports using NVD API
 - `--output` — output file (.txt / .json / .csv / .html / .xml)
+- `--randomize` — shuffle port order
+- `--max-rate` — max rate in packets/second
+- `--jitter` — random delay between ports
 - `--log-level` — logging level
 
 Input validation: `validate_target()` (supports IPv4, IPv6, CIDR, hostname), `validate_port()`, `parse_ports()`.
 
 Target resolution: `resolve_target()` — DNS resolution before scanning.
 
+Terminal output: statistics summary only (no per-port display). Per-port details are written to the report file.
+
 ### `scanner.py`
 Low-level functions:
 - `scan_port_connect(ip, port, timeout)` — scan via full TCP connection
 - `scan_port_syn(ip, port, timeout)` — scan via raw SYN packet (requires scapy + sudo)
-- `scan_range_threaded(ip, ports, scan_fn, timeout, delay, max_workers)` — parallel scanning
+- `scan_range_threaded(ip, ports, scan_fn, timeout, delay, max_workers, randomize, max_rate, jitter)` — parallel scanning
 - `get_service_name(port)` — service name for a given port; uses a built-in dictionary first, then falls back to `socket.getservbyport()`
 - `grab_banner(ip, port, timeout)` — read the service banner
+- `detect_service_version(ip, port, service_name, timeout)` — protocol-specific probes (HTTP, SMTP, MySQL, DNS, VNC, Redis, IRC, PostgreSQL, etc.)
+- `detect_os(ip, timeout)` — TTL fingerprinting via scapy (requires sudo)
+- `detect_firewall(ip, port, timeout)` — distinguishes DROP vs REJECT via scapy (requires sudo)
+- `resolve_target(target)` — single DNS resolution before scanning
 
 ### `output.py`
 Single function `write_output(results, path, target, scan_type)` that detects the file extension and writes:
-- `.txt` — plain tabulated text
-- `.json` — structured data
-- `.csv` — spreadsheet-compatible
-- `.html` — visual report with colors and statistics
-- `.xml` — Nmap-compatible XML output
+- `.txt` — plain text with target/OS header, one port per line with CVE details
+- `.json` — structured data with `meta` (target, scan_type, os, date) and `ports` sections
+- `.csv` — spreadsheet-compatible with os, version, firewall, vulns columns
+- `.html` — visual report with colors, statistics, OS in header, CVE badges with tooltips
+- `.xml` — Nmap-compatible format with `<os>` element and CVE descriptions
+
+All formats display the detected OS in the header/metadata.
 
 ### `discovery.py`
 - `discover_hosts(network, timeout)` — ARP sweep (scapy) with ICMP ping fallback
@@ -63,9 +78,11 @@ Single function `write_output(results, path, target, scan_type)` that detects th
 - `_icmp_sweep(network, timeout)` — parallel ping on all hosts in the CIDR
 
 ### `vuln_analyzer.py`
-- Queries CVE databases to identify known vulnerabilities on detected services
+- `parse_banner(banner)` — dynamic regex extraction of `(software, version)` (SSH-specific + generic pattern)
+- `analyze_vulnerabilities(banner)` — queries NVD API for CVEs with CVSS >= 7.0, in-memory cache
+- Returns `[{"id": "CVE-...", "cvss": 9.8, "description": "..."}]`
+- Logging via `logging.debug`/`logging.warning` (no print to avoid polluting tqdm)
 - `--vuln-scan` flag triggers the analysis on open ports
-- Results are included in the scan output under the `"vulns"` key
 
 ## Internal Results Format
 
@@ -73,9 +90,13 @@ Single function `write_output(results, path, target, scan_type)` that detects th
 dict[int, dict]
 # Example:
 {
-    80:  {"status": "open",     "service": "http",  "banner": "Apache/2.4", "vulns": [...]},
-    22:  {"status": "closed",   "service": "ssh",   "banner": "",           "vulns": []},
-    443: {"status": "filtered", "service": "https", "banner": "",           "vulns": []},
+    80:  {"status": "open",     "service": "http",  "banner": "Apache/2.4",
+          "os": "Linux/Unix",   "version": "Apache/2.4.54", "firewall": "",
+          "vulns": [{"id": "CVE-2024-XXXX", "cvss": 9.8, "description": "..."}]},
+    22:  {"status": "closed",   "service": "ssh",   "banner": "",
+          "os": "",             "version": "", "firewall": "", "vulns": []},
+    443: {"status": "filtered", "service": "https", "banner": "",
+          "os": "",             "version": "", "firewall": "filtered-silent", "vulns": []},
 }
 ```
 

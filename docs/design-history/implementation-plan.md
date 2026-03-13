@@ -126,8 +126,13 @@ Added to `scanner.py`: `detect_os(ip, timeout)`
 
 Added to `scanner.py`: `detect_service_version(ip, port, service_name, timeout)`
 
-- `_SERVICE_PROBES` dictionary: protocol-specific request (HTTP HEAD, SMTP EHLO, etc.)
+- `_SERVICE_PROBES` dictionary: protocol-specific requests for ~20 services (HTTP HEAD, SMTP EHLO, MySQL greeting, DNS version.bind, VNC RFB, Redis INFO, IRC, PostgreSQL, POP3S, IMAPS, FTPS, etc.)
 - HTTP/HTTPS: extracts the `Server:` header from the response
+- MySQL: parses binary greeting packet (version at byte 5, null-terminated)
+- DNS: sends version.bind TXT CHAOS query, parses response
+- VNC: parses `RFB xxx.yyy` protocol banner
+- Redis: parses `INFO server` response for `redis_version`
+- IRC: regex extraction for UnrealIRCd/InspIRCd version
 - SSH, FTP, SMTP: returns the first line of the response
 - Works without sudo
 
@@ -196,8 +201,8 @@ These items were added after the initial plan was completed:
 | `cli.py` | Simplified interactive interface for non-experts |
 | Preset profiles | Quick / Standard / Full / Custom |
 | Simplified speeds | Fast / Normal / Slow / Stealth (hides threads/timeout/delay/max-rate) |
-| Auto mode detection | SYN if root, TCP connect otherwise |
+| Root mode choice | Root users choose between SYN and TCP connect (no longer auto-forced) |
 | `Ctrl+C` handling | Clean shutdown without traceback |
 | Decimal comma | Accepted in addition to decimal point |
-| `test_sanitisation.py` | 29 input validation tests |
+| `test_sanitisation.py` | 16 input validation + thread tests |
 | Stealth options | `--randomize`, `--max-rate`, `--jitter` |

@@ -18,7 +18,7 @@ This is the core of the project. It contains all the scanning and network analys
 - `scan_range_threaded(ip, ports, scan_fn, ...)` -> dict — launches hundreds of scans in parallel via `ThreadPoolExecutor`
 - `get_service_name(port)` -> service name (`"http"`, `"ssh"`, etc.) — checks a built-in dictionary of 77 services first, then falls back to `socket.getservbyport()`
 - `grab_banner(ip, port, timeout)` -> first response line from the service
-- `detect_service_version(ip, port, service_name, timeout)` -> version extracted via protocol-specific probe (HTTP HEAD, SMTP EHLO, etc.)
+- `detect_service_version(ip, port, service_name, timeout)` -> version extracted via protocol-specific probe (HTTP HEAD, SMTP EHLO, MySQL greeting, DNS version.bind, VNC RFB, Redis INFO, IRC, PostgreSQL, etc.)
 - `detect_os(ip, timeout)` -> `"Linux/Unix"` | `"Windows"` | `"Network device"` | `"unknown"` — TTL fingerprinting
 - `detect_firewall(ip, port, timeout)` -> `"open"` | `"closed"` | `"filtered-silent"` | `"filtered-active"` | `"filtered"` — distinguishes silent DROP vs ICMP REJECT
 - `resolve_target(target)` -> single DNS resolution before scanning
@@ -49,14 +49,14 @@ Before scanning ports on a machine, you first need to know which machines are ac
 
 ### `output.py` — Results export
 
-Once the scan is complete, this module handles writing the results to a file.
+Once the scan is complete, this module handles writing the results to a file. All formats include the detected OS in the header/metadata.
 
 **Supported formats:**
-- `.txt` — plain text, one port per line with status, service, banner, version
-- `.json` — complete structured data
-- `.csv` — spreadsheet-compatible table, columns: port, status, service, banner, os, version, firewall
-- `.html` — colored visual report with table, statistics and embedded CSS (green=open, red=closed, gray=filtered)
-- `.xml` — Nmap/Metasploit compatible format (`<nmaprun>/<host>/<ports>/<port>`)
+- `.txt` — plain text with target/OS header, one port per line with status, service, banner, version, CVEs
+- `.json` — structured data with `meta` section (target, scan_type, os, date) and `ports` section
+- `.csv` — spreadsheet-compatible table, columns: port, status, service, banner, os, version, firewall, vulns
+- `.html` — colored visual report with table, statistics, OS in header, CVE badges with tooltips, embedded CSS (green=open, red=closed, gray=filtered)
+- `.xml` — Nmap/Metasploit compatible format (`<nmaprun>/<host>/<os>/<ports>/<port>/<vulnerabilities>`)
 
 **Called by `main.py`** at the end of the scan. For multi-host scans, one file is created per host.
 
@@ -67,10 +67,11 @@ Once the scan is complete, this module handles writing the results to a file.
 Queries the NVD (NIST) API for known CVEs based on detected service versions.
 
 **What it does:**
-- Takes scan results containing service names and versions
-- Queries the National Vulnerability Database for matching CVEs
-- Uses an in-memory cache to avoid redundant API calls
-- Returns vulnerability data associated with each service/version pair
+- `parse_banner(banner)` — extracts `(software, version)` via dynamic regex (SSH-specific pattern first, then generic `software/version` pattern)
+- `analyze_vulnerabilities(banner)` — queries the NVD API for CVEs with CVSS >= 7.0, sorted by severity
+- Uses an in-memory cache (`_CVE_CACHE`) to avoid redundant API calls
+- Returns list of dicts: `{"id": "CVE-...", "cvss": 9.8, "description": "..."}`
+- Logging via `logging.debug`/`logging.warning` (no `print` to avoid polluting tqdm progress bar)
 
 **Called by `main.py`** when the `--vuln-scan` option is enabled.
 
@@ -87,7 +88,7 @@ This is the main entry point. It parses command-line arguments and coordinates a
 4. Calls `scanner.py` to scan ports in parallel
 5. Enriches the results: service name, banner, version, OS, firewall type
 6. Calls `vuln_analyzer.py` if `--vuln-scan` is active
-7. Displays the results in the terminal
+7. Displays statistics summary in the terminal (no per-port output)
 8. Calls `output.py` — one file per host for multi-host scans
 
 **Results format:**
@@ -99,7 +100,7 @@ results[port] = {
     "os":       "Linux/Unix" | "Windows" | "unknown" | "",
     "version":  "nginx/1.18.0" | "",
     "firewall": "filtered-silent" | "filtered-active" | "",
-    "vulns":    [{"cve": "CVE-...", "description": "...", "severity": "..."}] | [],
+    "vulns":    [{"id": "CVE-...", "cvss": 9.8, "description": "..."}] | [],
 }
 ```
 
@@ -184,9 +185,9 @@ cli.py (optional)
 
 | File | Imports | Imported by |
 |------|---------|-------------|
-| `scanner.py` | `socket`, `errno`, `threading`, `concurrent.futures`, `scapy` (optional) | `main.py` |
+| `scanner.py` | `socket`, `errno`, `re`, `threading`, `concurrent.futures`, `scapy` (optional) | `main.py` |
 | `discovery.py` | `subprocess`, `ipaddress`, `platform`, `concurrent.futures`, `scapy` (optional) | `main.py` |
 | `output.py` | `csv`, `json`, `html`, `xml.etree.ElementTree`, `datetime` | `main.py` |
-| `vuln_analyzer.py` | `requests`, `json` | `main.py` |
+| `vuln_analyzer.py` | `requests`, `re`, `logging`, `time` | `main.py` |
 | `main.py` | `scanner`, `output`, `discovery`, `vuln_analyzer`, `argparse`, `logging` | `cli.py` |
 | `cli.py` | `main`, `os` | — |

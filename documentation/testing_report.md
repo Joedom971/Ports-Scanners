@@ -62,7 +62,7 @@ Expected result: **76 passed**
 | Test | Description |
 |------|-------------|
 | `test_write_txt` | Ports 22 and 80 present, version in brackets if available |
-| `test_write_json` | Key "22" with status "open" and service "ssh" |
+| `test_write_json` | Key `data["ports"]["22"]` with status "open" and service "ssh" |
 | `test_write_csv` | Headers include "os", "version", "firewall"; correct values |
 | `test_write_html` | Tags `<table>`, target, "open", banner present |
 | `test_html_stats` | Statistic "open: 1" present in HTML |
@@ -85,7 +85,7 @@ Expected result: **76 passed**
 | Test | Description |
 |------|-------------|
 | `test_cli_basic` | Scan port 80 → return code 0, file created |
-| `test_cli_json_output` | Port 80 "open" → JSON with `data["80"]["status"] == "open"` |
+| `test_cli_json_output` | Port 80 "open" → JSON with `data["ports"]["80"]["status"] == "open"` |
 | `test_cli_syn_no_scapy` | SYN scan without scapy → warning displayed, no crash |
 | `test_cli_threads_option` | `--threads 50` → `scan_range_threaded` called with `max_workers=50` |
 

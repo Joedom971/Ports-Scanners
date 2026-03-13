@@ -77,11 +77,11 @@ Start the scan? [Y/n] :
 Scanning 192.168.1.1 — 26 ports (connect)
 
 --- Scan Summary ---
-  Ports scanned   : 5
+  Ports scanned   : 26
   Ports open      : 2
   Ports closed    : 1
-  Ports filtered  : 2
-  Open rate       : 40.00%
+  Ports filtered  : 23
+  Open rate       : 7.69%
   Execution time  : 1.23 seconds
 
 Results saved to scan_results.html
@@ -222,9 +222,6 @@ Results saved to scan_results.txt
 
 ```
 $ python main.py --target 192.168.1.1 --ports 22,80 --version-detect --vuln-scan
-
-[*] NVD search: apache 2.2.8...
-[*] NVD search: openssh 4.7...
 
 Scanning 192.168.1.1 — 2 ports (connect)
 

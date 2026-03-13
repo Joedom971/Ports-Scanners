@@ -170,7 +170,7 @@ Identifies the exact software version running behind each open port.
 python main.py --target 192.168.1.1 --ports 22,80,443 --version-detect
 ```
 
-For each open port, the scanner sends a protocol-appropriate request (HTTP HEAD for web servers, EHLO for SMTP, etc.) and extracts the version from the response. Example: an open port 80 may reveal `Apache/2.4.54` or `nginx/1.18.0`. Works without sudo.
+For each open port, the scanner sends a protocol-appropriate request and extracts the version from the response. Supported protocols include HTTP (HEAD), SMTP (EHLO), FTP, SSH, MySQL (greeting packet), PostgreSQL, DNS (version.bind), VNC (RFB), Redis (INFO), IRC, and more. Example: an open port 80 may reveal `Apache/2.4.54` or `nginx/1.18.0`. Works without sudo.
 
 ---
 
@@ -315,7 +315,7 @@ The scan returns a dictionary per port:
         "os": "Linux/Unix",
         "version": "Apache/2.4.54",
         "firewall": "open",
-        "vulns": [{"cve": "CVE-2024-XXXX", "severity": "HIGH", "description": "..."}]
+        "vulns": [{"id": "CVE-2024-XXXX", "cvss": 9.8, "description": "..."}]
     }
 }
 ```
@@ -323,15 +323,20 @@ The scan returns a dictionary per port:
 ### Example output
 
 ```
-Scan of 192.168.1.1 — 5 ports (connect)
-   22  open       ssh             SSH-2.0-OpenSSH_8.9
-   80  filtered   http
-  443  closed     https
- 3389  filtered   ms-wbt-server
- 8080  filtered   http-alt
+Scanning 192.168.1.1 — 26 ports (connect)
 
-  open: 1  closed: 1  filtered: 3
+--- Scan Summary ---
+  Ports scanned   : 26
+  Ports open      : 2
+  Ports closed    : 1
+  Ports filtered  : 23
+  Open rate       : 7.69%
+  Execution time  : 1.23 seconds
+
+Results saved to scan_results.html
 ```
+
+> Per-port details (status, service, banner, version, CVEs) are written to the report file only — not displayed in the terminal. All report formats (HTML, XML, JSON, CSV, TXT) include the detected OS in the header.
 
 ---
 
