@@ -1,0 +1,19 @@
+# Environnement virtuel (ton dossier venv est visible sur ta capture)
+venv/
+ENV/
+env/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Résultats de scan / Outputs (tu as un fichier output.py, mais peut-être des logs ?)
+output/
+*.log
+*.json
+*.csv
+
+# OS metadata
+.DS_Store
+Thumbs.db
