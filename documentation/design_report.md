@@ -19,9 +19,10 @@ The project is organized into separate modules by responsibility:
 
 ### `cli.py`
 Step-by-step interface for non-experts. Provides:
-- Predefined profiles (quick, standard, full, custom)
-- Simplified speed settings (Fast / Normal / Slow) that configure threads, timeout, and delay
+- Predefined profiles (quick — 26 ports, standard, full, custom)
+- Simplified speed settings (Fast / Normal / Slow / Stealth) that configure threads, timeout, delay, max-rate, and randomize
 - Root users can choose between SYN scan and TCP connect (non-root users default to TCP connect)
+- `_print_safe()` — Windows Unicode compatibility fallback (replaces box-drawing chars with ASCII)
 
 ### `main.py`
 Full CLI exposing all options:
@@ -33,16 +34,15 @@ Full CLI exposing all options:
 - `--delay` — delay between ports for rate limiting (default: 0)
 - `--discover` — host discovery before scanning
 - `--banner` — banner grabbing on open ports
-- `--vuln-scan` — vulnerability analysis on open ports using CVE databases
 - `--version-detect` — detect service versions via protocol probes
 - `--os-detect` — detect OS via TTL fingerprinting (requires sudo)
 - `--firewall-detect` — distinguish DROP vs REJECT (requires sudo)
 - `--vuln-scan` — vulnerability analysis on open ports using NVD API
 - `--output` — output file (.txt / .json / .csv / .html / .xml)
-- `--randomize` — shuffle port order
-- `--max-rate` — max rate in packets/second
-- `--jitter` — random delay between ports
-- `--log-level` — logging level
+- `--randomize` — shuffle port order to avoid sequential scanning patterns
+- `--max-rate` — global rate limit in packets/second (serializes all sends across threads)
+- `--jitter` — random delay variation between ports (breaks regular timing patterns)
+- `--log-level` — logging level (DEBUG, INFO, WARNING)
 
 Input validation: `validate_target()` (supports IPv4, IPv6, CIDR, hostname), `validate_port()`, `parse_ports()`.
 

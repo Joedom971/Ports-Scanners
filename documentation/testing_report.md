@@ -6,11 +6,11 @@ The project includes **76 unit tests** organized across 5 files:
 
 ```
 tests/
-├── test_scanner.py       (29 tests)
+├── test_sanitisation.py  (31 tests: 19 validation + 10 parse_ports + 2 threads)
+├── test_scanner.py       (28 tests)
 ├── test_output.py        (10 tests)
-├── test_discovery.py     (3 tests)
 ├── test_main.py          (4 tests)
-└── test_sanitisation.py  (16 tests: 14 validation + 2 threads)
+└── test_discovery.py     (3 tests)
 ```
 
 Run the tests:
@@ -24,7 +24,7 @@ Expected result: **76 passed**
 
 ## Coverage by Module
 
-### `test_scanner.py` — 29 tests
+### `test_scanner.py` — 28 tests
 
 | Test | Description |
 |------|-------------|
@@ -89,7 +89,7 @@ Expected result: **76 passed**
 | `test_cli_syn_no_scapy` | SYN scan without scapy → warning displayed, no crash |
 | `test_cli_threads_option` | `--threads 50` → `scan_range_threaded` called with `max_workers=50` |
 
-### `test_sanitisation.py` — 16 tests (14 validation + 2 threads)
+### `test_sanitisation.py` — 31 tests (19 validation + 10 parse_ports + 2 threads)
 
 | Test | Description |
 |------|-------------|
@@ -100,11 +100,28 @@ Expected result: **76 passed**
 | `test_validate_target_ip` | Simple IP accepted |
 | `test_validate_target_cidr` | CIDR accepted |
 | `test_validate_target_hostname` | Valid hostname accepted |
+| `test_validate_target_localhost` | "localhost" accepted |
 | `test_validate_target_empty` | Empty string → `ValueError` |
 | `test_validate_target_forbidden_chars` | Injection in target → `ValueError` |
 | `test_validate_target_too_long` | Hostname > 253 chars → `ValueError` |
-| `test_validate_output_file_*` | Valid extensions (.txt .json .csv .html .xml), invalid, relative traversal blocked |
-| `test_parse_ports_*` | Single port, range, list, combination, deduplication, reversed range, invalid |
+| `test_validate_output_file_txt` | `.txt` extension accepted |
+| `test_validate_output_file_json` | `.json` extension accepted |
+| `test_validate_output_file_csv` | `.csv` extension accepted |
+| `test_validate_output_file_html` | `.html` extension accepted |
+| `test_validate_output_file_invalid_extension` | `.exe` → rejected |
+| `test_validate_output_file_empty` | Empty string → rejected |
+| `test_validate_output_file_relative_traversal` | `../../` path → rejected |
+| `test_validate_output_file_absolute_allowed` | Absolute path accepted |
+| `test_parse_ports_simple` | Single port parsed |
+| `test_parse_ports_range` | Range `20-25` expanded |
+| `test_parse_ports_list` | Comma-separated list parsed |
+| `test_parse_ports_combination` | Mixed range + list |
+| `test_parse_ports_deduplicates` | Duplicate ports removed |
+| `test_parse_ports_reversed_range` | `85-80` auto-corrected |
+| `test_parse_ports_port_zero` | Port 0 → rejected |
+| `test_parse_ports_port_too_large` | Port 65536 → rejected |
+| `test_parse_ports_empty` | Empty string → rejected |
+| `test_parse_ports_invalid` | Non-numeric input → rejected |
 | `test_threads_zero_returns_error` | `--threads 0` → return code 1 |
 | `test_threads_negative_returns_error` | `--threads -1` → return code 1 |
 
