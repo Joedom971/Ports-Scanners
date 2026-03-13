@@ -5,9 +5,9 @@ from scanner import scan_port_connect, get_service_name, grab_banner, scan_range
 
 
 def test_get_service_name_known():
-    assert get_service_name(80) == "http"
-    assert get_service_name(22) == "ssh"
-    assert get_service_name(443) == "https"
+    assert get_service_name(80) == "HTTP"
+    assert get_service_name(22) == "SSH"
+    assert get_service_name(443) == "HTTPS"
 
 def test_get_service_name_unknown():
     result = get_service_name(19999)

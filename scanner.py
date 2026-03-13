@@ -94,13 +94,46 @@ def resoudre_cible(cible: str) -> str:
         return socket.gethostbyname(cible)
 
 
+# Extended service dictionary — covers modern services not in /etc/services
+SERVICES_DICT = {
+    20: "FTP-DATA", 21: "FTP", 22: "SSH", 23: "TELNET", 25: "SMTP",
+    53: "DNS", 67: "DHCP", 68: "DHCP", 69: "TFTP", 80: "HTTP",
+    110: "POP3", 119: "NNTP", 123: "NTP", 143: "IMAP", 161: "SNMP",
+    194: "IRC", 389: "LDAP", 443: "HTTPS", 445: "SMB", 465: "SMTPS",
+    500: "ISAKMP", 587: "SMTP Submission", 636: "LDAPS",
+    989: "FTPS", 990: "FTPS", 993: "IMAPS", 995: "POP3S",
+    1433: "MSSQL", 1521: "Oracle DB", 2049: "NFS",
+    2082: "cPanel", 2083: "cPanel SSL", 2181: "Zookeeper",
+    2222: "DirectAdmin", 2483: "Oracle DB SSL", 2484: "Oracle DB SSL",
+    3000: "Development Server", 3128: "Squid Proxy", 3306: "MySQL",
+    3389: "RDP", 3690: "Subversion", 4444: "Metasploit Handler",
+    4567: "Ruby Server", 5000: "Flask / Dev Server", 5432: "PostgreSQL",
+    5601: "Kibana", 5672: "RabbitMQ", 5900: "VNC",
+    5985: "WinRM HTTP", 5986: "WinRM HTTPS", 6379: "Redis",
+    6667: "IRC", 7001: "WebLogic", 7002: "WebLogic SSL",
+    7070: "Web Server", 7200: "Splunk", 7474: "Neo4j",
+    8000: "HTTP-ALT", 8008: "HTTP Proxy", 8009: "AJP",
+    8080: "HTTP Proxy", 8081: "HTTP ALT", 8088: "Splunk Web",
+    8090: "HTTP", 8443: "HTTPS ALT", 8888: "Jupyter Notebook",
+    9000: "SonarQube", 9042: "Cassandra", 9090: "Prometheus",
+    9092: "Kafka", 9200: "Elasticsearch", 9418: "Git",
+    9999: "Debug / Dev", 10000: "Webmin", 11211: "Memcached",
+    27017: "MongoDB",
+}
+
+
 def get_service_name(port: int) -> str:
-    """Returns the service name associated with the port, or 'unknown'."""
+    """Returns the service name associated with the port, or 'unknown'.
+
+    Checks the extended dictionary first, then falls back to the system
+    services database (/etc/services).
+    """
+    service = SERVICES_DICT.get(port)
+    if service:
+        return service
     try:
-        # getservbyport looks up the system services database (/etc/services)
         return socket.getservbyport(port)
     except OSError:
-        # Port not listed in the system database
         return "unknown"
 
 
