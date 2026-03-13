@@ -1,97 +1,110 @@
-# Rapport de conception
+# Design Report
 
 ## Architecture
 
-Le projet est organisé en modules séparés selon les responsabilités :
+The project is organized into separate modules by responsibility:
 
-| Module | Rôle |
+| Module | Role |
 |--------|------|
-| `cli.py` | Interface interactive simplifiée pour l'utilisateur final |
-| `main.py` | Point d'entrée CLI complet via `argparse` |
-| `scanner.py` | Bibliothèque de scan TCP (connect et SYN) |
-| `output.py` | Export des résultats (txt, json, csv, html) |
-| `discovery.py` | Découverte d'hôtes sur un réseau |
-| `tests/` | Tests unitaires (pytest) |
-| `documentation/` | Documentation du projet (rapports, conception) |
+| `cli.py` | Simplified interactive interface for end users |
+| `main.py` | Full CLI entry point via `argparse` |
+| `scanner.py` | TCP scanning library (connect and SYN) |
+| `output.py` | Results export (txt, json, csv, html, xml) |
+| `discovery.py` | Host discovery on a network |
+| `vuln_analyzer.py` | Vulnerability analysis using CVE databases |
+| `tests/` | Unit tests (pytest) |
+| `documentation/` | Project documentation (reports, design) |
 
 ## Modules
 
 ### `cli.py`
-Interface pas-à-pas pour non-experts. Propose :
-- Des profils prédéfinis (rapide, standard, complet, personnalisé)
-- Une vitesse simplifiée (Rapide / Normal / Lent) qui configure threads, timeout et délai
-- Auto-détection du mode de scan selon les droits root (TCP connect ou SYN)
+Step-by-step interface for non-experts. Provides:
+- Predefined profiles (quick, standard, full, custom)
+- Simplified speed settings (Fast / Normal / Slow) that configure threads, timeout, and delay
+- Root users can choose between SYN scan and TCP connect (non-root users default to TCP connect)
 
 ### `main.py`
-CLI complet exposant toutes les options :
-- `--target` — cible (IP, hostname, CIDR)
-- `--ports` — spécification des ports (ex. `22,80-85,443`)
-- `--scan-type` — `connect` ou `syn`
-- `--threads` — parallélisme (défaut : 100)
-- `--timeout` — délai par port en secondes (défaut : 1.0)
-- `--delay` — délai entre ports pour le rate limiting (défaut : 0)
-- `--discover` — découverte d'hôtes avant le scan
-- `--banner` — récupération de bannière sur les ports ouverts
-- `--output` — fichier de sortie (.txt / .json / .csv / .html)
-- `--log-level` — niveau de journalisation
+Full CLI exposing all options:
+- `--target` — target (IP, hostname, CIDR)
+- `--ports` — port specification (e.g. `22,80-85,443`)
+- `--scan-type` — `connect` or `syn`
+- `--threads` — parallelism (default: 100)
+- `--timeout` — per-port timeout in seconds (default: 1.0)
+- `--delay` — delay between ports for rate limiting (default: 0)
+- `--discover` — host discovery before scanning
+- `--banner` — banner grabbing on open ports
+- `--vuln-scan` — vulnerability analysis on open ports using CVE databases
+- `--output` — output file (.txt / .json / .csv / .html / .xml)
+- `--log-level` — logging level
+
+Input validation: `validate_target()` (supports IPv4, IPv6, CIDR, hostname), `validate_port()`, `parse_ports()`.
+
+Target resolution: `resolve_target()` — DNS resolution before scanning.
 
 ### `scanner.py`
-Fonctions de bas niveau :
-- `scan_port_connect(ip, port, timeout)` — scan via connexion TCP complète
-- `scan_port_syn(ip, port, timeout)` — scan via raw packet SYN (nécessite scapy + sudo)
-- `scan_range_threaded(ip, ports, scan_fn, timeout, delay, max_workers)` — scan parallèle
-- `get_service_name(port)` — nom du service associé au port
-- `grab_banner(ip, port, timeout)` — lecture de la bannière du service
+Low-level functions:
+- `scan_port_connect(ip, port, timeout)` — scan via full TCP connection
+- `scan_port_syn(ip, port, timeout)` — scan via raw SYN packet (requires scapy + sudo)
+- `scan_range_threaded(ip, ports, scan_fn, timeout, delay, max_workers)` — parallel scanning
+- `get_service_name(port)` — service name for a given port; uses a built-in dictionary first, then falls back to `socket.getservbyport()`
+- `grab_banner(ip, port, timeout)` — read the service banner
 
 ### `output.py`
-Fonction unique `write_output(results, path, target, scan_type)` qui détecte l'extension et écrit :
-- `.txt` — texte brut tabulé
-- `.json` — données structurées
-- `.csv` — compatible tableur
-- `.html` — rapport visuel avec couleurs et statistiques
+Single function `write_output(results, path, target, scan_type)` that detects the file extension and writes:
+- `.txt` — plain tabulated text
+- `.json` — structured data
+- `.csv` — spreadsheet-compatible
+- `.html` — visual report with colors and statistics
+- `.xml` — Nmap-compatible XML output
 
 ### `discovery.py`
-- `discover_hosts(network, timeout)` — balayage ARP (scapy) avec repli ICMP ping
-- `_arp_sweep(network, timeout)` — envoi de paquets ARP sur le sous-réseau
-- `_icmp_sweep(network, timeout)` — ping parallèle sur tous les hôtes du CIDR
+- `discover_hosts(network, timeout)` — ARP sweep (scapy) with ICMP ping fallback
+- `_arp_sweep(network, timeout)` — sends ARP packets on the subnet
+- `_icmp_sweep(network, timeout)` — parallel ping on all hosts in the CIDR
 
-## Format interne des résultats
+### `vuln_analyzer.py`
+- Queries CVE databases to identify known vulnerabilities on detected services
+- `--vuln-scan` flag triggers the analysis on open ports
+- Results are included in the scan output under the `"vulns"` key
+
+## Internal Results Format
 
 ```python
 dict[int, dict]
-# Exemple :
+# Example:
 {
-    80:  {"status": "open",     "service": "http",  "banner": "Apache/2.4"},
-    22:  {"status": "closed",   "service": "ssh",   "banner": ""},
-    443: {"status": "filtered", "service": "https", "banner": ""},
+    80:  {"status": "open",     "service": "http",  "banner": "Apache/2.4", "vulns": [...]},
+    22:  {"status": "closed",   "service": "ssh",   "banner": "",           "vulns": []},
+    443: {"status": "filtered", "service": "https", "banner": "",           "vulns": []},
 }
 ```
 
-## Bibliothèques utilisées
+## Libraries Used
 
-| Bibliothèque | Usage |
-|-------------|-------|
-| `socket` | Connexions TCP et résolution de noms |
-| `concurrent.futures` | Parallélisme via ThreadPoolExecutor |
-| `argparse` | Parsing des arguments CLI |
-| `json`, `csv` | Sérialisation des résultats |
-| `subprocess` | Ping ICMP pour la découverte d'hôtes |
-| `ipaddress` | Calcul des hôtes d'un sous-réseau CIDR |
-| `scapy` *(optionnel)* | SYN scan et balayage ARP |
-| `tqdm` *(optionnel)* | Barre de progression |
+| Library | Usage |
+|---------|-------|
+| `socket` | TCP connections and name resolution |
+| `concurrent.futures` | Parallelism via ThreadPoolExecutor |
+| `argparse` | CLI argument parsing |
+| `json`, `csv` | Results serialization |
+| `subprocess` | ICMP ping for host discovery |
+| `ipaddress` | Computing hosts from a CIDR subnet |
+| `requests` | HTTP requests for vulnerability database queries |
+| `scapy` *(optional)* | SYN scan and ARP sweep |
+| `tqdm` *(optional)* | Progress bar |
 
-## Observations réseau (Wireshark)
+## Network Observations (Wireshark)
 
 ### TCP connect
-- Établit la poignée de main complète (SYN → SYN-ACK → ACK)
-- Port ouvert : connexion établie, puis fermée proprement
-- Port fermé : la cible répond RST
-- Port filtré : aucune réponse, le scanner attend le timeout
+- Completes the full handshake (SYN → SYN-ACK → ACK)
+- Open port: connection established, then closed cleanly
+- Closed port: target responds with RST
+- Filtered port: no response, the scanner waits until timeout
 
 ### SYN scan
-- Envoie uniquement le SYN (raw packet via scapy)
-- Port ouvert : reçoit SYN-ACK, envoie un RST pour fermer proprement la connexion half-open
-- Port fermé : reçoit RST-ACK
-- Port filtré : aucune réponse
-- Plus discret : aucune connexion complète n'est enregistrée dans les logs applicatifs
-- Limitation connue : sur Linux sans règle iptables, le kernel envoie son propre RST avant scapy (race condition inhérente au raw socket userspace)
+- Sends only the SYN (raw packet via scapy)
+- Open port: receives SYN-ACK, sends RST to cleanly close the half-open connection
+- Closed port: receives RST-ACK
+- Filtered port: no response
+- More stealthy: no full connection is logged in application logs
+- Known limitation: on Linux without an iptables rule, the kernel sends its own RST before scapy (race condition inherent to userspace raw sockets)

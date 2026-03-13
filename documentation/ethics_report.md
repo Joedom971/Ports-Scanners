@@ -1,48 +1,48 @@
-# Rapport éthique et légal
+# Ethics and Legal Report
 
-## Règle fondamentale
+## Fundamental Rule
 
-> **Ne scannez jamais une machine sans autorisation explicite de son propriétaire.**
+> **Never scan a machine without explicit permission from its owner.**
 
-Scanner un système sans permission est illégal dans la plupart des pays, même sans intention malveillante.
+Scanning a system without permission is illegal in most countries, even without malicious intent.
 
-## Cadre légal
+## Legal Framework
 
-| Pays | Loi applicable |
-|------|---------------|
-| Belgique | Loi du 28 novembre 2000 sur la criminalité informatique |
-| France | Articles 323-1 à 323-7 du Code pénal |
-| Union Européenne | Directive NIS2 (2022/2555) |
+| Country | Applicable Law |
+|---------|---------------|
+| Belgium | Law of 28 November 2000 on computer crime |
+| France | Articles 323-1 to 323-7 of the Penal Code |
+| European Union | NIS2 Directive (2022/2555) |
 
-Un scan de ports non autorisé peut être qualifié d'**accès frauduleux à un système informatique**.
+An unauthorized port scan can be classified as **unauthorized access to a computer system**.
 
-## Usages autorisés
+## Authorized Uses
 
-- Scan de **votre propre infrastructure** (machine perso, serveur personnel)
-- Scan dans un **réseau de laboratoire isolé** (VM, environnement de test)
-- Scan dans le cadre d'un **pentest avec contrat signé**
-- Scan dans le cadre d'un **programme de bug bounty** (périmètre défini)
+- Scanning **your own infrastructure** (personal machine, personal server)
+- Scanning within an **isolated lab network** (VM, test environment)
+- Scanning as part of a **pentest with a signed contract**
+- Scanning as part of a **bug bounty program** (defined scope)
 
-## Usages interdits
+## Prohibited Uses
 
-- Scanner des serveurs publics sans autorisation
-- Scanner le réseau d'une entreprise, école ou FAI sans accord écrit
-- Utiliser les résultats d'un scan pour exploiter des vulnérabilités sur des systèmes tiers
+- Scanning public servers without authorization
+- Scanning the network of a company, school, or ISP without written agreement
+- Using scan results to exploit vulnerabilities on third-party systems
 
-## Discrétion et détection
+## Stealth and Detection
 
-### Comment un scan peut être détecté
-- **IDS/IPS** (Snort, Suricata) — détectent les scans de ports par signature
-- **Logs pare-feu** — chaque tentative de connexion peut être enregistrée
-- **Honeypots** — ports délibérément ouverts pour piéger les scanners
+### How a Scan Can Be Detected
+- **IDS/IPS** (Snort, Suricata) — detect port scans by signature
+- **Firewall logs** — every connection attempt can be recorded
+- **Honeypots** — ports deliberately left open to trap scanners
 
-### Réduire l'empreinte (dans un cadre autorisé)
-- Utiliser le **SYN scan** (moins de traces dans les logs applicatifs)
-- Réduire le nombre de threads (`--threads 20`)
-- Ajouter un délai entre les ports (`--delay 0.1`)
-- Limiter la plage de ports scannés
+### Reducing Footprint (within an authorized context)
+- Use **SYN scan** (fewer traces in application logs)
+- Reduce the number of threads (`--threads 20`)
+- Add a delay between ports (`--delay 0.1`)
+- Limit the range of scanned ports
 
-## Note
+## Disclaimer
 
-Ce projet est destiné à un **usage éducatif et de laboratoire uniquement**.
-L'auteur décline toute responsabilité en cas d'utilisation abusive ou illégale.
+This project is intended for **educational and lab use only**.
+The author disclaims all responsibility in case of misuse or illegal use.

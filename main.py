@@ -320,13 +320,6 @@ def main(args: Optional[List[str]] = None) -> int:
                 "vulns": vulns,
             }
 
-        # Display results in the terminal, sorted by port number
-        for port, info in sorted(results.items()):
-            version_str = f"  [{info.get('version')}]" if info.get("version") else ""
-            fw_str = f" ({info.get('firewall')})" if info.get("firewall") else ""
-            vuln_str = f"  [!] {len(info['vulns'])} CVE(s)" if info.get("vulns") else ""
-            print(f"  {port:5d}  {info['status']:<10}{fw_str:<22} {info['service']:<15} {info['banner']}{version_str}{vuln_str}")
-
         all_results[target] = results
 
     # Stop the timer after all hosts have been scanned      ---STATISTIK GENERATOR (end)---

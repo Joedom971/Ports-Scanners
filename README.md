@@ -1,249 +1,265 @@
-# Scanner de ports réseau
+# Network Port Scanner
 
-Un outil Python pour analyser les ports ouverts sur une machine ou un réseau local.
-Développé dans le cadre d'un projet d'apprentissage réseau.
+A Python tool for analyzing open ports on a machine or local network.
+Developed as part of a networking learning project.
 
 ---
 
-## C'est quoi un scanner de ports ?
+## What is a port scanner?
 
-Chaque machine connectée à un réseau communique via des **ports**. Un port, c'est comme une porte d'entrée numérotée (de 1 à 65535) par laquelle un service peut recevoir des connexions.
+Every machine connected to a network communicates through **ports**. A port is like a numbered door (from 1 to 65535) through which a service can receive connections.
 
-Exemples de ports connus :
+Examples of well-known ports:
 | Port | Service |
 |------|---------|
-| 22 | SSH (accès distant sécurisé) |
-| 80 | HTTP (sites web) |
-| 443 | HTTPS (sites web sécurisés) |
-| 3389 | Bureau à distance Windows |
+| 22 | SSH (secure remote access) |
+| 80 | HTTP (websites) |
+| 443 | HTTPS (secure websites) |
+| 3389 | Windows Remote Desktop |
 
-Un scanner de ports **tente de se connecter** à chaque port d'une machine et observe la réponse :
-- **open** → le port répond, un service tourne derrière
-- **closed** → le port répond mais refuse la connexion (rien ne tourne)
-- **filtered** → pas de réponse (pare-feu ou machine éteinte)
+A port scanner **attempts to connect** to each port on a machine and observes the response:
+- **open** — the port responds, a service is running behind it
+- **closed** — the port responds but refuses the connection (nothing is running)
+- **filtered** — no response (firewall or machine is down)
 
-Cet outil sert à cartographier les services actifs sur un réseau — utile pour l'administration système, l'audit de sécurité, ou simplement comprendre ce qui tourne sur son réseau.
-
----
-
-## Comment ça fonctionne ?
-
-### Le scan TCP connect (mode par défaut)
-
-C'est la méthode la plus simple. Pour chaque port, le scanner effectue une **poignée de main TCP complète** (le protocole de base d'internet) :
-
-```
-Scanner  →  SYN        →  Machine cible
-Scanner  ←  SYN-ACK    ←  Machine cible  (port ouvert)
-Scanner  →  ACK        →  Machine cible
-Scanner  →  FIN        →  Machine cible  (on ferme proprement)
-```
-
-Si la machine répond `RST` (reset) au lieu de `SYN-ACK`, le port est fermé.
-Si rien ne répond après le délai configuré, le port est filtré.
-
-### Le scan SYN (mode furtif, nécessite sudo)
-
-Plus discret. Le scanner envoie uniquement le premier paquet `SYN` sans jamais finaliser la connexion. La connexion n'est jamais établie complètement, donc elle n'apparaît pas dans les logs des applications.
-
-```
-Scanner  →  SYN        →  Machine cible
-Scanner  ←  SYN-ACK    ←  Machine cible  (port ouvert, mais on n'envoie pas le ACK)
-```
-
-Ce mode nécessite des droits administrateur (`sudo`) car il envoie des **paquets bruts** (raw packets) directement au niveau réseau, sans passer par le système d'exploitation.
-
-### Le parallélisme (pourquoi c'est rapide)
-
-Scanner 1024 ports un par un à 1 seconde de timeout = **17 minutes**.
-Avec 100 threads parallèles = **quelques secondes**.
-
-Le projet utilise `ThreadPoolExecutor` : un groupe de fils d'exécution (threads) qui travaillent simultanément, chacun scannant un port différent.
+This tool is used to map active services on a network — useful for system administration, security auditing, or simply understanding what is running on your network.
 
 ---
 
-## Structure du projet
+## How does it work?
+
+### TCP connect scan (default mode)
+
+This is the simplest method. For each port, the scanner performs a **full TCP handshake** (the basic internet protocol):
+
+```
+Scanner  ->  SYN        ->  Target machine
+Scanner  <-  SYN-ACK    <-  Target machine  (port open)
+Scanner  ->  ACK        ->  Target machine
+Scanner  ->  FIN        ->  Target machine  (clean close)
+```
+
+If the machine responds with `RST` (reset) instead of `SYN-ACK`, the port is closed.
+If nothing responds after the configured timeout, the port is filtered.
+
+### SYN scan (stealth mode, requires sudo)
+
+More discreet. The scanner only sends the first `SYN` packet without ever completing the connection. The connection is never fully established, so it does not appear in application logs.
+
+```
+Scanner  ->  SYN        ->  Target machine
+Scanner  <-  SYN-ACK    <-  Target machine  (port open, but we don't send the ACK)
+```
+
+This mode requires administrator privileges (`sudo`) because it sends **raw packets** directly at the network level, bypassing the operating system's TCP stack.
+
+### Parallelism (why it's fast)
+
+Scanning 1024 ports one by one at 1 second timeout = **17 minutes**.
+With 100 parallel threads = **a few seconds**.
+
+The project uses `ThreadPoolExecutor`: a pool of execution threads that work simultaneously, each scanning a different port.
+
+---
+
+## Project structure
 
 ```
 Port_scanner_Reseau/
-├── cli.py          → Interface interactive pas-à-pas (pour débuter)
-├── main.py         → Interface ligne de commande complète
-├── scanner.py      → Moteur de scan (la logique principale)
-├── output.py       → Export des résultats (txt, json, csv, html, xml)
-├── discovery.py    → Découverte des machines actives sur un réseau
-├── tests/          → Tests automatisés (74 tests)
-└── documentation/  → Rapports de conception, tests, éthique
+├── cli.py              -> Step-by-step interactive interface (beginner-friendly)
+├── main.py             -> Full command-line interface
+├── scanner.py          -> Scan engine (core logic)
+├── output.py           -> Results export (txt, json, csv, html, xml)
+├── discovery.py        -> Active host discovery on a network
+├── vuln_analyzer.py    -> Vulnerability analysis (CVE lookup via NVD API)
+├── tests/              -> Automated tests (76 tests)
+└── documentation/      -> Design reports, tests, ethics
 ```
 
 ---
 
-## Les librairies utilisées
+## Libraries used
 
-### Bibliothèque standard Python (aucune installation)
+### Python standard library (no installation needed)
 
 **`socket`**
-La librairie réseau de base de Python. C'est elle qui effectue réellement les connexions TCP. Elle permet d'ouvrir une socket (point de connexion), de la connecter à une adresse IP + port, et de lire/écrire des données.
+Python's core networking library. It is what actually performs TCP connections. It allows opening a socket (connection endpoint), connecting it to an IP address + port, and reading/writing data.
 ```python
-sock.connect_ex(("192.168.1.1", 80))  # retourne 0 si ouvert
+sock.connect_ex(("192.168.1.1", 80))  # returns 0 if open
 ```
 
 **`concurrent.futures` (ThreadPoolExecutor)**
-Gère le pool de threads parallèles. Au lieu de lancer et gérer chaque thread manuellement, `ThreadPoolExecutor` distribue automatiquement le travail entre N threads et collecte les résultats.
+Manages the parallel thread pool. Instead of launching and managing each thread manually, `ThreadPoolExecutor` automatically distributes work among N threads and collects results.
 ```python
 with ThreadPoolExecutor(max_workers=100) as executor:
     futures = {executor.submit(scanner, port): port for port in ports}
 ```
 
 **`subprocess`**
-Permet d'exécuter des commandes système depuis Python — utilisé pour lancer des pings (`ping -c 1 192.168.1.1`) lors de la découverte d'hôtes par ICMP.
+Allows executing system commands from Python — used to run pings (`ping -c 1 192.168.1.1`) during ICMP host discovery.
 
 **`ipaddress`**
-Analyse et manipule les adresses IP et les réseaux CIDR (`192.168.1.0/24`). Permet de calculer la liste de toutes les adresses d'un sous-réseau sans faire les calculs binaires à la main.
+Parses and manipulates IP addresses and CIDR networks (`192.168.1.0/24`). Computes the list of all addresses in a subnet without manual binary calculations.
 
 **`argparse`**
-Gère les arguments en ligne de commande (`--target`, `--ports`, etc.). Génère automatiquement le message `--help`.
+Handles command-line arguments (`--target`, `--ports`, etc.). Automatically generates the `--help` message.
 
 **`json` / `csv`**
-Export des résultats dans ces formats standards.
+Exports results in these standard formats.
 
 **`threading`**
-Utilisé pour le rate limiting global : un `Lock` (verrou) partagé entre tous les threads garantit qu'un seul paquet est envoyé à la fois quand `--max-rate` est activé.
+Used for global rate limiting: a shared `Lock` between all threads ensures only one packet is sent at a time when `--max-rate` is enabled.
 
 **`html`**
-Échappe les caractères spéciaux (`<`, `>`, `&`) dans le rapport HTML pour éviter les injections de code.
+Escapes special characters (`<`, `>`, `&`) in the HTML report to prevent code injection.
 
 ---
 
-### Librairies optionnelles (à installer séparément)
+### Optional libraries (installed separately)
 
 **`scapy`**
-La librairie Python de manipulation de paquets réseau. Elle permet de forger des paquets TCP/IP bruts "à la main" — c'est ce qui rend le SYN scan possible. Sans scapy, le scanner bascule automatiquement en TCP connect.
+The Python library for network packet manipulation. It allows forging raw TCP/IP packets "by hand" — this is what makes the SYN scan possible. Without scapy, the scanner automatically falls back to TCP connect.
 ```python
-pkt = IP(dst="192.168.1.1") / TCP(dport=80, flags="S")  # paquet SYN forgé
-resp = sr1(pkt, timeout=1)  # envoi et attente de réponse
+pkt = IP(dst="192.168.1.1") / TCP(dport=80, flags="S")  # forged SYN packet
+resp = sr1(pkt, timeout=1)  # send and wait for response
 ```
-Scapy est aussi utilisée pour le balayage ARP lors de la découverte d'hôtes sur un réseau local.
+Scapy is also used for ARP sweeping during host discovery on a local network.
 
 **`tqdm`**
-Affiche une barre de progression dans le terminal pendant le scan. Purement cosmétique — si absent, le scanner fonctionne normalement sans barre.
+Displays a progress bar in the terminal during the scan. Purely cosmetic — if absent, the scanner works normally without a progress bar.
 
 **`pytest`**
-Framework de tests automatisés. Permet de vérifier que chaque fonction du projet se comporte correctement avec 74 tests unitaires.
+Automated testing framework. Used to verify that each function in the project behaves correctly with 76 unit tests.
+
+**`requests`**
+HTTP library used by `vuln_analyzer.py` for querying the NVD (National Vulnerability Database) API to look up known CVEs associated with detected service versions.
 
 ---
 
-## Options avancées
+## Advanced options
 
-### Découverte d'hôtes — `--discover`
+### Host discovery — `--discover`
 
-Avant de scanner les ports, détecte quelles machines sont actives sur le réseau.
+Before scanning ports, detects which machines are active on the network.
 
 ```bash
 python main.py --target 192.168.1.0/24 --discover --ports 22,80
 ```
 
-Sans `--discover`, le scanner tente directement de se connecter aux ports de la cible. Avec `--discover`, il envoie d'abord des requêtes ARP (ou des pings ICMP) pour lister les machines qui répondent, puis scanne uniquement celles-ci. Utile sur un sous-réseau `/24` pour ne pas perdre de temps sur des IPs éteintes.
+Without `--discover`, the scanner directly attempts to connect to the target's ports. With `--discover`, it first sends ARP requests (or ICMP pings) to list responding machines, then scans only those. Useful on a `/24` subnet to avoid wasting time on inactive IPs.
 
 ---
 
-### Bannières de services — `--banner`
+### Service banners — `--banner`
 
-Lit la première réponse envoyée par chaque service ouvert.
+Reads the first response sent by each open service.
 
 ```bash
 python main.py --target 192.168.1.1 --ports 22,80,443 --banner
 ```
 
-Quand un port est ouvert, le service derrière affiche souvent une ligne d'identification au moment de la connexion — c'est la **bannière**. Elle peut contenir le nom du logiciel et sa version (`SSH-2.0-OpenSSH_8.9`, `Apache/2.4.54`). Ces informations permettent d'identifier les logiciels installés et de détecter des versions obsolètes.
+When a port is open, the service behind it often displays an identification line upon connection — this is the **banner**. It may contain the software name and version (`SSH-2.0-OpenSSH_8.9`, `Apache/2.4.54`). This information helps identify installed software and detect outdated versions.
 
 ---
 
-### Détection de version — `--version-detect`
+### Version detection — `--version-detect`
 
-Identifie la version exacte du logiciel qui tourne derrière chaque port ouvert.
+Identifies the exact software version running behind each open port.
 
 ```bash
 python main.py --target 192.168.1.1 --ports 22,80,443 --version-detect
 ```
 
-Pour chaque port ouvert, le scanner envoie une requête adaptée au protocole détecté (HTTP HEAD pour les serveurs web, EHLO pour SMTP, etc.) et extrait la version depuis la réponse. Exemple : un port 80 ouvert peut révéler `Apache/2.4.54` ou `nginx/1.18.0`. Fonctionne sans sudo.
+For each open port, the scanner sends a protocol-appropriate request (HTTP HEAD for web servers, EHLO for SMTP, etc.) and extracts the version from the response. Example: an open port 80 may reveal `Apache/2.4.54` or `nginx/1.18.0`. Works without sudo.
 
 ---
 
-### Détection d'OS — `--os-detect`
+### Vulnerability scan — `--vuln-scan`
 
-Tente de deviner le système d'exploitation de la machine cible.
+Searches for known CVEs on detected service versions (requires Internet).
+
+```bash
+python main.py --target 192.168.1.1 --ports 22,80,443 --version-detect --vuln-scan
+```
+
+When combined with `--version-detect`, the scanner queries the NVD (National Vulnerability Database) API for known vulnerabilities (CVEs) matching the detected software versions. Results include CVE identifiers, severity scores, and descriptions. Requires the `requests` library and an active Internet connection.
+
+---
+
+### OS detection — `--os-detect`
+
+Attempts to guess the target machine's operating system.
 
 ```bash
 sudo $(pwd)/.venv/bin/python main.py --target 192.168.1.1 --ports 22,80 --os-detect
 ```
 
-La technique utilisée est le **TTL fingerprinting** : chaque OS répond avec une valeur TTL différente dans les paquets réseau (Linux/Unix ≤ 64, Windows ≤ 128, équipements réseau > 128). Nécessite `scapy` et `sudo` car il envoie des paquets bruts.
+The technique used is **TTL fingerprinting**: each OS responds with a different TTL value in network packets (Linux/Unix <= 64, Windows <= 128, network devices > 128). Requires `scapy` and `sudo` as it sends raw packets.
 
 ---
 
-### Détection de pare-feu — `--firewall-detect`
+### Firewall detection — `--firewall-detect`
 
-Distingue les ports silencieusement bloqués (DROP) des ports activement rejetés (REJECT).
+Distinguishes silently blocked ports (DROP) from actively rejected ports (REJECT).
 
 ```bash
 sudo $(pwd)/.venv/bin/python main.py --target 192.168.1.1 --ports 1-1024 --firewall-detect
 ```
 
-Un port `filtered` classique peut signifier deux choses très différentes : soit le pare-feu ignore silencieusement le paquet (`filtered-silent` — règle DROP), soit il répond par un message ICMP "destination unreachable" (`filtered-active` — règle REJECT). Cette distinction aide à comprendre la configuration du pare-feu. Nécessite `scapy` et `sudo`.
+A standard `filtered` port can mean two very different things: either the firewall silently ignores the packet (`filtered-silent` — DROP rule), or it responds with an ICMP "destination unreachable" message (`filtered-active` — REJECT rule). This distinction helps understand the firewall configuration. Requires `scapy` and `sudo`.
 
 ---
 
 ### Threads — `--threads`
 
-Contrôle le nombre de connexions lancées en parallèle.
+Controls the number of connections launched in parallel.
 
 ```bash
 python main.py --target 192.168.1.1 --ports 1-1024 --threads 200
 ```
 
-Par défaut : 100 threads. Augmenter accélère le scan mais génère plus de trafic simultané (plus détectable, plus de charge sur la cible). Diminuer ralentit mais est plus discret. Sur un réseau local rapide, 400 threads est raisonnable. Sur internet, 50 est plus sage.
+Default: 100 threads. Increasing speeds up the scan but generates more simultaneous traffic (more detectable, more load on the target). Decreasing slows it down but is more discreet. On a fast local network, 400 threads is reasonable. Over the internet, 50 is wiser.
 
 ---
 
 ### Timeout — `--timeout`
 
-Délai maximum d'attente par port, en secondes.
+Maximum wait time per port, in seconds.
 
 ```bash
 python main.py --target 192.168.1.1 --ports 1-1024 --timeout 0.5
 ```
 
-Par défaut : 1 seconde. Si la cible ne répond pas dans ce délai, le port est marqué `filtered`. Réduire le timeout accélère le scan mais risque de classer des ports `open` ou `closed` comme `filtered` si la connexion est lente. Sur un réseau local, 0.3 s suffit. Sur internet, garder 1 à 2 s.
+Default: 1 second. If the target does not respond within this delay, the port is marked `filtered`. Reducing the timeout speeds up the scan but risks classifying `open` or `closed` ports as `filtered` if the connection is slow. On a local network, 0.3 s is enough. Over the internet, keep 1 to 2 s.
 
 ---
 
-## Les fonctionnalités de furtivité
+## Stealth features
 
-Pour réduire la détection par les systèmes de surveillance réseau (IDS) :
+To reduce detection by network monitoring systems (IDS):
 
-**`--randomize`** — mélange l'ordre des ports avant le scan. Un scan séquentiel (1, 2, 3, 4...) est une signature immédiatement reconnaissable par un IDS. Avec `--randomize`, l'ordre est imprévisible.
+**`--randomize`** — shuffles the port order before scanning. A sequential scan (1, 2, 3, 4...) is an immediately recognizable signature for an IDS. With `--randomize`, the order is unpredictable.
 
-**`--delay 0.1`** — ajoute une pause fixe entre chaque port scanné. Simple et prévisible, mais réduit la charge. À utiliser quand on veut juste ralentir sans complexité. Exemple : `--delay 0.1` = 100 ms entre chaque port.
+**`--delay 0.1`** — adds a fixed pause between each scanned port. Simple and predictable, but reduces load. Use when you just want to slow down without complexity. Example: `--delay 0.1` = 100 ms between each port.
 
-**`--max-rate 2`** — limite le débit global à N paquets par seconde via un verrou partagé entre tous les threads. Plus précis que `--delay` car il contrôle le rythme réel d'envoi indépendamment du nombre de threads. `--max-rate 2` = maximum 2 paquets par seconde, peu importe combien de threads tournent.
+**`--max-rate 2`** — limits the global throughput to N packets per second via a shared lock between all threads. More precise than `--delay` because it controls the actual send rate independently of the thread count. `--max-rate 2` = maximum 2 packets per second, regardless of how many threads are running.
 
-> **Différence entre `--delay` et `--max-rate` :** `--delay` ajoute une pause dans chaque thread individuellement — avec 100 threads et `--delay 0.1`, on envoie quand même 100 paquets toutes les 0.1 s. `--max-rate` sérialise tous les envois globalement — avec `--max-rate 2`, on envoie exactement 2 paquets par seconde au total.
+> **Difference between `--delay` and `--max-rate`:** `--delay` adds a pause in each thread individually — with 100 threads and `--delay 0.1`, you still send 100 packets every 0.1 s. `--max-rate` serializes all sends globally — with `--max-rate 2`, exactly 2 packets per second are sent in total.
 
-**`--jitter 0.3`** — ajoute un délai aléatoire entre 0 et 0.3 secondes. Un délai fixe produit un rythme régulier détectable ; un délai variable ressemble plus à du trafic humain.
+**`--jitter 0.3`** — adds a random delay between 0 and 0.3 seconds. A fixed delay produces a regular rhythm that is detectable; a variable delay looks more like human traffic.
 
-**Résolution DNS unique** — si tu scannes `monserveur.local`, le nom est résolu en IP une seule fois au départ, pas à chaque connexion. Évite N requêtes DNS visibles sur le réseau.
+**Single DNS resolution** — if you scan `myserver.local`, the hostname is resolved to an IP once at the start, not on every connection. This avoids N visible DNS queries on the network.
 
 ---
 
-## Installation et utilisation
+## Installation and usage
 
-### Prérequis
+### Prerequisites
 
-- Python 3.10 ou plus récent
-- Un terminal (cmd / PowerShell sur Windows, Terminal sur macOS/Linux)
+- Python 3.10 or newer
+- A terminal (cmd / PowerShell on Windows, Terminal on macOS/Linux)
 
-### Installation (à faire une seule fois)
+### Installation (one-time setup)
 
 ```bash
 # macOS / Linux
@@ -251,40 +267,63 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
-# Windows (PowerShell ou cmd)
+# Windows (PowerShell or cmd)
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-### Lancer le scanner
+### Running the scanner
 
 ```bash
-# Mode interactif (recommandé — pose les questions une par une)
+# Interactive mode (recommended — asks questions one by one, displays statistics summary)
 python cli.py
 
-# Ligne de commande directe
-python main.py --target 192.168.1.1 --ports 22,80,443 --output rapport.html
+# Direct command line
+python main.py --target 192.168.1.1 --ports 22,80,443 --output report.html
 
-# SYN scan discret (nécessite sudo sur macOS/Linux, admin sur Windows)
+# SYN stealth scan (requires sudo on macOS/Linux, admin on Windows)
 sudo $(pwd)/.venv/bin/python main.py --target 192.168.1.1 --ports 1-1024 --scan-type syn
+
+# Full scan with vulnerability detection
+python main.py --target 192.168.1.1 --ports 1-1024 --version-detect --vuln-scan --output report.html
 ```
 
-> Pour les instructions détaillées par système (Linux / macOS / Windows) et pour le SYN scan, consulter **[GUIDE_UTILISATION.md](GUIDE_UTILISATION.md)**.
+> The interactive CLI (`cli.py`) displays only a statistics summary at the end of the scan. Root users can choose between SYN and TCP connect scan modes.
 
-### Lancer les tests
+> For detailed per-system instructions (Linux / macOS / Windows) and SYN scan setup, see **[USAGE_GUIDE.md](USAGE_GUIDE.md)**.
+
+### Running the tests
 
 ```bash
 python -m pytest tests/ -v
-# 74 tests, résultat attendu : 74 passed
+# 76 tests, expected result: 76 passed
 ```
 
 ---
 
-## Exemple de résultat
+## Result format
+
+The scan returns a dictionary per port:
+
+```python
+{
+    port: {
+        "status": "open" | "closed" | "filtered",
+        "service": "http",
+        "banner": "Apache/2.4.54 ...",
+        "os": "Linux/Unix",
+        "version": "Apache/2.4.54",
+        "firewall": "open",
+        "vulns": [{"cve": "CVE-2024-XXXX", "severity": "HIGH", "description": "..."}]
+    }
+}
+```
+
+### Example output
 
 ```
-Scan de 192.168.1.1 — 5 ports (connect)
+Scan of 192.168.1.1 — 5 ports (connect)
    22  open       ssh             SSH-2.0-OpenSSH_8.9
    80  filtered   http
   443  closed     https
@@ -296,12 +335,12 @@ Scan de 192.168.1.1 — 5 ports (connect)
 
 ---
 
-## ⚠️ Avertissement légal
+## Legal disclaimer
 
-Scanner un réseau **sans autorisation** est illégal.
+Scanning a network **without authorization** is illegal.
 
-En Belgique, la loi du 28 novembre 2000 sur la criminalité informatique punit l'accès non autorisé à un système informatique. La directive européenne NIS2 renforce ces obligations pour les infrastructures critiques.
+In Belgium, the law of November 28, 2000 on computer crime punishes unauthorized access to a computer system. The European NIS2 directive strengthens these obligations for critical infrastructure.
 
-**Usages autorisés :** ton propre réseau, une machine que tu administres, un environnement de test, un pentest avec accord écrit du propriétaire.
+**Authorized uses:** your own network, a machine you administer, a test environment, a pentest with written agreement from the owner.
 
-**Usages interdits :** scanner des machines ou réseaux tiers sans permission.
+**Prohibited uses:** scanning third-party machines or networks without permission.
