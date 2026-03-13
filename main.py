@@ -8,11 +8,12 @@ Supports:
   - parallel scan (ThreadPoolExecutor)
   - host discovery (ARP or ICMP)
   - banner grabbing, service names, rate limiting
+  - vulnerability analysis (CVE lookup via NVD API)
   - console + file export (.txt/.json/.csv/.html)
 
 Usage:
   python main.py --target 192.168.1.1 --ports 20-1024 --output scan.json
-  python main.py --target 192.168.1.0/24 --discover --ports 22,80 --scan-type syn
+  python main.py --target 192.168.1.0/24 --discover --ports 22,80 --scan-type syn --vuln-scan
 """
 
 import argparse
@@ -43,6 +44,14 @@ try:
     TQDM_AVAILABLE = True
 except ImportError:
     TQDM_AVAILABLE = False
+
+# Attempt to import the vulnerability analyzer module.
+# If requests is not installed, vuln scanning is silently disabled.
+try:
+    from vuln_analyzer import analyze_vulnerabilities
+    VULN_ANALYSIS_AVAILABLE = True
+except ImportError:
+    VULN_ANALYSIS_AVAILABLE = False
 
 
 def valider_port(port: int) -> int:
@@ -162,6 +171,8 @@ def main(args: Optional[List[str]] = None) -> int:
                         help="Détecter la version des services ouverts (probe actif par protocole)")
     parser.add_argument("--firewall-detect", action="store_true",
                         help="Distinguer les types de filtrage pare-feu (nécessite scapy + sudo)")
+    parser.add_argument("--vuln-scan", action="store_true",
+                        help="Search for known CVEs based on detected banners/versions (requires Internet)")
 
     parsed = parser.parse_args(args=args)
 
@@ -191,6 +202,10 @@ def main(args: Optional[List[str]] = None) -> int:
         # In max-rate mode, sends are serialised → multiple threads have no effect
         print(f"Note : --max-rate sérialise les envois — --threads {parsed.threads} n'a pas d'effet. "
               f"Les paquets seront envoyés à {parsed.max_rate} pkt/s.")
+
+    if parsed.vuln_scan and not VULN_ANALYSIS_AVAILABLE:
+        logging.warning("--vuln-scan is enabled but vuln_analyzer module (or requests library) is missing. "
+                        "CVE analysis will be skipped.")
 
     # Sanitise user inputs (protection against malformed values)
     try:
@@ -286,6 +301,12 @@ def main(args: Optional[List[str]] = None) -> int:
             version = ""
             if parsed.version_detect and status == "open":
                 version = detect_service_version(target, port, service, timeout=parsed.timeout)
+            # Vulnerability analysis: prefer active version detection, fall back to banner
+            vulns = []
+            if parsed.vuln_scan and VULN_ANALYSIS_AVAILABLE and status == "open":
+                vuln_target = version if version else banner
+                if vuln_target:
+                    vulns = analyze_vulnerabilities(vuln_target)
             firewall = ""
             if parsed.firewall_detect and status == "filtered":
                 firewall = detect_firewall(target, port, timeout=parsed.timeout)
@@ -296,13 +317,15 @@ def main(args: Optional[List[str]] = None) -> int:
                 "os": os_guess,
                 "version": version,
                 "firewall": firewall,
+                "vulns": vulns,
             }
 
         # Display results in the terminal, sorted by port number
         for port, info in sorted(results.items()):
             version_str = f"  [{info.get('version')}]" if info.get("version") else ""
             fw_str = f" ({info.get('firewall')})" if info.get("firewall") else ""
-            print(f"  {port:5d}  {info['status']:<10}{fw_str:<22} {info['service']:<15} {info['banner']}{version_str}")
+            vuln_str = f"  [!] {len(info['vulns'])} CVE(s)" if info.get("vulns") else ""
+            print(f"  {port:5d}  {info['status']:<10}{fw_str:<22} {info['service']:<15} {info['banner']}{version_str}{vuln_str}")
 
         all_results[target] = results
 

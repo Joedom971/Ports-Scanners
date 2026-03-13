@@ -34,7 +34,10 @@ def _write_txt(results: Dict[int, dict], path: Path) -> None:
         for port, info in sorted(results.items()):
             version_str = f"  [{info['version']}]" if info.get("version") else ""
             fw_str = f" ({info['firewall']})" if info.get("firewall") else ""
-            f.write(f"{port:5d}: {info['status']}{fw_str}  {info['service']}  {info['banner']}{version_str}\n")
+            vuln_str = f"  [!] {len(info.get('vulns', []))} CVE(s)" if info.get("vulns") else ""
+            f.write(f"{port:5d}: {info['status']}{fw_str}  {info['service']}  {info['banner']}{version_str}{vuln_str}\n")
+            for vuln in info.get("vulns", []):
+                f.write(f"       -> {vuln['id']} (CVSS: {vuln['cvss']}): {vuln['description']}\n")
 
 
 def _write_json(results: Dict[int, dict], path: Path) -> None:
@@ -48,9 +51,10 @@ def _write_csv(results: Dict[int, dict], path: Path) -> None:
     """Writes results as CSV (Excel/spreadsheet compatible)."""
     with path.open("w", encoding="utf-8", newline="") as f:
         # DictWriter automatically generates headers and rows
-        writer = csv.DictWriter(f, fieldnames=["port", "status", "service", "banner", "os", "version", "firewall"])
+        writer = csv.DictWriter(f, fieldnames=["port", "status", "service", "banner", "os", "version", "firewall", "vulns"])
         writer.writeheader()
         for port, info in sorted(results.items()):
+            vulns_str = ", ".join([v["id"] for v in info.get("vulns", [])])
             writer.writerow({
                 "port": port,
                 "status": info["status"],
@@ -59,6 +63,7 @@ def _write_csv(results: Dict[int, dict], path: Path) -> None:
                 "os": info.get("os", ""),
                 "version": info.get("version", ""),
                 "firewall": info.get("firewall", ""),
+                "vulns": vulns_str,
             })
 
 
@@ -100,6 +105,13 @@ def _write_xml(results: Dict[int, dict], path: Path, target: str, scan_type: str
         if info.get("firewall"):
             ET.SubElement(port_elem, "firewall", type=info["firewall"])
 
+        # Vulnerability elements
+        vulns = info.get("vulns", [])
+        if vulns:
+            vulns_elem = ET.SubElement(port_elem, "vulnerabilities")
+            for vuln in vulns:
+                ET.SubElement(vulns_elem, "cve", id=vuln["id"], cvss=str(vuln["cvss"]))
+
     # ET.indent() adds human-readable indentation (Python 3.9+)
     ET.indent(root, space="  ")
     tree = ET.ElementTree(root)
@@ -112,8 +124,10 @@ def _write_html(results: Dict[int, dict], path: Path, target: str, scan_type: st
 
     # Count ports by status for the statistics section
     counts = {"open": 0, "closed": 0, "filtered": 0}
+    vuln_count = 0
     for info in results.values():
         counts[info["status"]] = counts.get(info["status"], 0) + 1
+        vuln_count += len(info.get("vulns", []))
 
     # Colours associated with each status (green = open, red = closed, grey = filtered)
     color_map = {"open": "#2ecc71", "closed": "#e74c3c", "filtered": "#95a5a6"}
@@ -126,6 +140,16 @@ def _write_html(results: Dict[int, dict], path: Path, target: str, scan_type: st
     rows = ""
     for port, info in sorted(results.items()):
         color = color_map.get(info["status"], "#fff")
+        # Build vulnerability badges for this port
+        vulns_html = "—"
+        vulns_list = info.get("vulns", [])
+        if vulns_list:
+            badges = []
+            for v in vulns_list:
+                safe_desc = html_lib.escape(v["description"])
+                badges.append(f"<span class='cve-badge' title='{safe_desc}'>{v['id']} ({v['cvss']})</span>")
+            vulns_html = "<br>".join(badges)
+
         # The colour is applied as a transparent background (22 = 13% opacity in hexadecimal)
         rows += (
             f"<tr style='background:{color}22'>"
@@ -135,6 +159,7 @@ def _write_html(results: Dict[int, dict], path: Path, target: str, scan_type: st
             f"<td>{html_lib.escape(info['banner']) if info['banner'] else '—'}</td>"
             f"<td>{html_lib.escape(info.get('version', '')) or '—'}</td>"
             f"<td>{html_lib.escape(info.get('firewall', '')) or '—'}</td>"
+            f"<td>{vulns_html}</td>"
             f"</tr>\n"
         )
 
@@ -148,9 +173,11 @@ def _write_html(results: Dict[int, dict], path: Path, target: str, scan_type: st
   .meta {{ color: #aaa; margin-bottom: 1rem; }}
   .stats {{ margin-bottom: 1rem; }}
   .stat-open {{ color: #2ecc71; }} .stat-closed {{ color: #e74c3c; }} .stat-filtered {{ color: #95a5a6; }}
+  .stat-vuln {{ color: #ff4757; font-weight: bold; margin-left: 15px; border: 1px solid #ff4757; padding: 2px 6px; border-radius: 4px; }}
   table {{ border-collapse: collapse; width: 100%; }}
   th {{ background: #16213e; padding: 8px 12px; text-align: left; }}
-  td {{ padding: 6px 12px; border-bottom: 1px solid #333; }}
+  td {{ padding: 6px 12px; border-bottom: 1px solid #333; vertical-align: top; }}
+  .cve-badge {{ display: inline-block; background: #ff4757; color: white; padding: 2px 6px; margin: 2px 0; border-radius: 3px; font-size: 0.85em; cursor: help; }}
 </style>
 </head>
 <body>
@@ -160,9 +187,10 @@ def _write_html(results: Dict[int, dict], path: Path, target: str, scan_type: st
   <span class="stat-open">open: {counts['open']}</span> &nbsp;
   <span class="stat-closed">closed: {counts['closed']}</span> &nbsp;
   <span class="stat-filtered">filtered: {counts['filtered']}</span>
+  {f'<span class="stat-vuln">⚠ {vuln_count} CVE(s) detected</span>' if vuln_count > 0 else ''}
 </div>
 <table>
-<tr><th>Port</th><th>Service</th><th>Statut</th><th>Banner</th><th>Version</th><th>Firewall</th></tr>
+<tr><th>Port</th><th>Service</th><th>Statut</th><th>Banner</th><th>Version</th><th>Firewall</th><th>Vulnerabilities</th></tr>
 {rows}
 </table>
 </body>

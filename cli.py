@@ -29,8 +29,8 @@ def _print_safe(text: str) -> None:
 VITESSES = {
     # LAN: short timeout, many threads — responses arrive in < 10ms on a local network
     "Rapide  (réseau local)":    {"threads": 400, "timeout": 0.3, "delay": 0.0, "jitter": 0.0,  "max_rate": 0.0,  "randomize": False},
-    # Normal: balanced for LAN/WAN — timeout reduced to 0.5s, more threads to compensate
-    "Normal  (recommandé)":      {"threads": 200, "timeout": 0.5, "delay": 0.0, "jitter": 0.0,  "max_rate": 0.0,  "randomize": False},
+    # Normal: balanced for LAN/WAN — 1.0s absorbs latency spikes, 100 threads avoids socket/NAT exhaustion
+    "Normal  (recommandé)":      {"threads": 100, "timeout": 1.0, "delay": 0.0, "jitter": 0.0,  "max_rate": 0.0,  "randomize": False},
     # Slow: fewer threads and inter-port delay to reduce network noise
     "Lent    (discret)":         {"threads": 20,  "timeout": 2.0, "delay": 0.1, "jitter": 0.0,  "max_rate": 0.0,  "randomize": False},
     # Stealth: few threads, rate limited to 2 packets/s, randomised port order
@@ -150,6 +150,7 @@ def main() -> int:
         discover        = False
         banner          = False
         version_detect  = False
+        vuln_scan       = False
         firewall_detect = False
     else:
         print("  (Entrée = non pour toutes)")
@@ -166,6 +167,13 @@ def main() -> int:
             "Détecter la version des services trouvés (ex: Apache/2.4) ?",
             defaut=False,
         )
+        # Vuln scan only makes sense if we have banners or versions to analyse
+        vuln_scan = False
+        if version_detect or banner:
+            vuln_scan = oui_non(
+                "Rechercher des vulnérabilités (CVE) sur ces versions (nécessite Internet) ?",
+                defaut=False,
+            )
 
     # In SYN mode, firewall_detect was already set to False above.
     # In TCP connect mode, ask the user — firewall-detect needs sudo.
@@ -246,6 +254,7 @@ def main() -> int:
         _print_safe(f"║  Découverte  : {'oui' if discover else 'non':<31}║")
         _print_safe(f"║  Infos srv.  : {'oui' if banner else 'non':<31}║")
         _print_safe(f"║  Ver. svc    : {'oui' if version_detect else 'non':<31}║")
+        _print_safe(f"║  Anal. CVE   : {'oui' if vuln_scan else 'non':<31}║")
         _print_safe(f"║  Pare-feu    : {'oui' if firewall_detect else 'non':<31}║")
     _print_safe(f"║  Détect. OS  : {'oui' if os_detect else 'non':<31}║")
     _print_safe(f"║  Rapport     : {_trunc(nom_fichier):<31}║")
@@ -281,6 +290,8 @@ def main() -> int:
         scan_args.append("--banner")
     if version_detect:
         scan_args.append("--version-detect")
+    if vuln_scan:
+        scan_args.append("--vuln-scan")
     if firewall_detect:
         scan_args.append("--firewall-detect")
     if os_detect:
