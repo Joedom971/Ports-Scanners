@@ -25,8 +25,8 @@ def test_write_json(tmp_path):
     out = tmp_path / "scan.json"
     write_output(RESULTS, out, "127.0.0.1", "connect")
     data = json.loads(out.read_text())
-    assert data["22"]["status"] == "open"
-    assert data["22"]["service"] == "ssh"
+    assert data["ports"]["22"]["status"] == "open"
+    assert data["ports"]["22"]["service"] == "ssh"
 
 def test_write_csv(tmp_path):
     out = tmp_path / "scan.csv"

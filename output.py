@@ -10,26 +10,41 @@ from pathlib import Path
 from typing import Dict
 
 
+def _extract_os(results: Dict[int, dict]) -> str:
+    """Extracts the OS guess from the first port result that has one."""
+    for info in results.values():
+        os_val = info.get("os", "")
+        if os_val and os_val != "unknown":
+            return os_val
+    return ""
+
+
 def write_output(results: Dict[int, dict], output_path: Path, target: str, scan_type: str) -> None:
     """Writes results in the format matching the file extension."""
     ext = output_path.suffix.lower()
+    os_guess = _extract_os(results)
     # Route to the appropriate write function based on the file extension
     if ext == ".json":
-        _write_json(results, output_path)
+        _write_json(results, output_path, target, scan_type, os_guess)
     elif ext == ".csv":
         _write_csv(results, output_path)
     elif ext == ".xml":
-        _write_xml(results, output_path, target, scan_type)
+        _write_xml(results, output_path, target, scan_type, os_guess)
     elif ext == ".html":
-        _write_html(results, output_path, target, scan_type)
+        _write_html(results, output_path, target, scan_type, os_guess)
     else:
         # Default: plain text (.txt or unknown extension)
-        _write_txt(results, output_path)
+        _write_txt(results, output_path, target, os_guess)
 
 
-def _write_txt(results: Dict[int, dict], path: Path) -> None:
+def _write_txt(results: Dict[int, dict], path: Path, target: str = "", os_guess: str = "") -> None:
     """Writes results as plain text, one port per line."""
     with path.open("w", encoding="utf-8") as f:
+        if target:
+            f.write(f"Target: {target}")
+            if os_guess:
+                f.write(f"  |  OS: {os_guess}")
+            f.write("\n\n")
         # sorted() sorts ports in ascending order
         for port, info in sorted(results.items()):
             version_str = f"  [{info['version']}]" if info.get("version") else ""
@@ -40,11 +55,19 @@ def _write_txt(results: Dict[int, dict], path: Path) -> None:
                 f.write(f"       -> {vuln['id']} (CVSS: {vuln['cvss']}): {vuln['description']}\n")
 
 
-def _write_json(results: Dict[int, dict], path: Path) -> None:
-    """Writes results as structured JSON."""
+def _write_json(results: Dict[int, dict], path: Path, target: str = "", scan_type: str = "", os_guess: str = "") -> None:
+    """Writes results as structured JSON with metadata."""
+    data = {
+        "meta": {
+            "target": target,
+            "scan_type": scan_type,
+            "os": os_guess,
+            "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        },
+        "ports": {str(p): info for p, info in results.items()},
+    }
     with path.open("w", encoding="utf-8") as f:
-        # JSON keys must be strings → convert with str(p)
-        json.dump({str(p): info for p, info in results.items()}, f, indent=2)
+        json.dump(data, f, indent=2)
 
 
 def _write_csv(results: Dict[int, dict], path: Path) -> None:
@@ -67,18 +90,22 @@ def _write_csv(results: Dict[int, dict], path: Path) -> None:
             })
 
 
-def _write_xml(results: Dict[int, dict], path: Path, target: str, scan_type: str) -> None:
+def _write_xml(results: Dict[int, dict], path: Path, target: str, scan_type: str, os_guess: str = "") -> None:
     """Generates an XML report compatible with the Nmap/Metasploit format.
 
     Structure:
       <nmaprun scanner="port-scanner" target="..." type="...">
         <host>
           <address addr="..." addrtype="ipv4"/>
+          <os name="..."/>
           <ports>
             <port protocol="tcp" portid="22">
               <state state="open"/>
               <service name="ssh" version="..." banner="..."/>
               <firewall type="..."/>  <!-- only if present -->
+              <vulnerabilities>
+                <cve id="..." cvss="..." description="..."/>
+              </vulnerabilities>
             </port>
           </ports>
         </host>
@@ -87,6 +114,8 @@ def _write_xml(results: Dict[int, dict], path: Path, target: str, scan_type: str
     root = ET.Element("nmaprun", scanner="port-scanner", target=target, type=scan_type)
     host_elem = ET.SubElement(root, "host")
     ET.SubElement(host_elem, "address", addr=target, addrtype="ipv4")
+    if os_guess:
+        ET.SubElement(host_elem, "os", name=os_guess)
     ports_elem = ET.SubElement(host_elem, "ports")
 
     for port, info in sorted(results.items()):
@@ -110,7 +139,8 @@ def _write_xml(results: Dict[int, dict], path: Path, target: str, scan_type: str
         if vulns:
             vulns_elem = ET.SubElement(port_elem, "vulnerabilities")
             for vuln in vulns:
-                ET.SubElement(vulns_elem, "cve", id=vuln["id"], cvss=str(vuln["cvss"]))
+                ET.SubElement(vulns_elem, "cve", id=vuln["id"], cvss=str(vuln["cvss"]),
+                              description=vuln.get("description", ""))
 
     # ET.indent() adds human-readable indentation (Python 3.9+)
     ET.indent(root, space="  ")
@@ -118,7 +148,7 @@ def _write_xml(results: Dict[int, dict], path: Path, target: str, scan_type: str
     tree.write(str(path), encoding="utf-8", xml_declaration=True)
 
 
-def _write_html(results: Dict[int, dict], path: Path, target: str, scan_type: str) -> None:
+def _write_html(results: Dict[int, dict], path: Path, target: str, scan_type: str, os_guess: str = "") -> None:
     """Generates a coloured HTML report with a table and statistics."""
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -146,8 +176,10 @@ def _write_html(results: Dict[int, dict], path: Path, target: str, scan_type: st
         if vulns_list:
             badges = []
             for v in vulns_list:
-                safe_desc = html_lib.escape(v["description"])
-                badges.append(f"<span class='cve-badge' title='{safe_desc}'>{v['id']} ({v['cvss']})</span>")
+                safe_desc = html_lib.escape(v.get("description", ""), quote=True)
+                safe_id = html_lib.escape(v.get("id", ""))
+                cvss = v.get("cvss", 0)
+                badges.append(f'<span class="cve-badge" title="{safe_desc}">{safe_id} ({cvss})</span>')
             vulns_html = "<br>".join(badges)
 
         # The colour is applied as a transparent background (22 = 13% opacity in hexadecimal)
@@ -182,7 +214,7 @@ def _write_html(results: Dict[int, dict], path: Path, target: str, scan_type: st
 </head>
 <body>
 <h1>Scan Report</h1>
-<div class="meta">Target: <strong>{safe_target}</strong> | Type: {safe_scan_type} | Date: {now}</div>
+<div class="meta">Target: <strong>{safe_target}</strong>{f' | OS: <strong>{html_lib.escape(os_guess)}</strong>' if os_guess else ''} | Type: {safe_scan_type} | Date: {now}</div>
 <div class="stats">
   <span class="stat-open">open: {counts['open']}</span> &nbsp;
   <span class="stat-closed">closed: {counts['closed']}</span> &nbsp;

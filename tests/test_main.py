@@ -18,8 +18,8 @@ def test_cli_json_output(tmp_path):
     with patch("main.scan_range_threaded", return_value={80: "open"}):
         main(["--target", "127.0.0.1", "--ports", "80", "--output", str(out)])
     data = json.loads(out.read_text())
-    assert "80" in data
-    assert data["80"]["status"] == "open"
+    assert "80" in data["ports"]
+    assert data["ports"]["80"]["status"] == "open"
 
 
 def test_cli_syn_no_scapy(tmp_path, capsys):
