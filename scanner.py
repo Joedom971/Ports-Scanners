@@ -79,7 +79,7 @@ def scan_port_connect(ip: str, port: int, timeout: float = 1.0) -> str:
         return "filtered"
 
 
-def resoudre_cible(cible: str) -> str:
+def resolve_target(target: str) -> str:
     """Resolves a hostname to an IP address once.
 
     If the target is already an IP, returns it as-is.
@@ -87,11 +87,11 @@ def resoudre_cible(cible: str) -> str:
     """
     try:
         # Check if the target is already a valid IP address
-        ipaddress.ip_address(cible)
-        return cible  # already an IP, no DNS resolution needed
+        ipaddress.ip_address(target)
+        return target  # already an IP, no DNS resolution needed
     except ValueError:
         # Not an IP → resolve the hostname via DNS
-        return socket.gethostbyname(cible)
+        return socket.gethostbyname(target)
 
 
 # Extended service dictionary — covers modern services not in /etc/services
@@ -305,14 +305,14 @@ def scan_port_syn(ip: str, port: int, timeout: float = 1.0) -> str:
     """
     if not SCAPY_AVAILABLE:
         import logging
-        logging.warning("scapy non disponible — fallback sur filtered.")
+        logging.warning("scapy not available — falling back to filtered.")
         return "filtered"
 
     import os
     # Raw packets require root privileges (uid 0)
     if getattr(os, "geteuid", lambda: 1)() != 0:
         import logging
-        logging.warning("SYN scan nécessite sudo. Retourne filtered.")
+        logging.warning("SYN scan requires sudo. Returning filtered.")
         return "filtered"
 
     # Craft an IP/TCP packet with the SYN flag set

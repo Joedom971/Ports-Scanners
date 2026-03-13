@@ -29,7 +29,7 @@ from scanner import (
     detect_service_version,
     grab_banner,
     get_service_name,
-    resoudre_cible,
+    resolve_target,
     scan_port_connect,
     scan_port_syn,
     scan_range_threaded,
@@ -54,56 +54,56 @@ except ImportError:
     VULN_ANALYSIS_AVAILABLE = False
 
 
-def valider_port(port: int) -> int:
+def validate_port(port: int) -> int:
     """Checks that a port is within the valid range (1-65535)."""
     if not 1 <= port <= 65535:
-        raise ValueError(f"Port invalide : {port} (doit être entre 1 et 65535)")
+        raise ValueError(f"Invalid port: {port} (must be between 1 and 65535)")
     return port
 
 
-def valider_cible(cible: str) -> str:
+def validate_target(target: str) -> str:
     """Checks that a target is a valid IP, hostname, or CIDR."""
     import ipaddress
-    cible = cible.strip()
-    if not cible:
-        raise ValueError("La cible ne peut pas être vide.")
+    target = target.strip()
+    if not target:
+        raise ValueError("Target cannot be empty.")
     # Attempt to parse as CIDR (e.g. "192.168.1.0/24")
     try:
-        ipaddress.ip_network(cible, strict=False)
-        return cible
+        ipaddress.ip_network(target, strict=False)
+        return target
     except ValueError:
         pass
     # Attempt to parse as a plain IP address (IPv4 or IPv6)
     try:
-        ipaddress.ip_address(cible)
-        return cible
+        ipaddress.ip_address(target)
+        return target
     except ValueError:
         pass
     # Hostname / plain IP: basic check of allowed characters
-    caracteres_autorises = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-_")
-    if not all(c in caracteres_autorises for c in cible):
-        raise ValueError(f"Cible invalide : '{cible}' contient des caractères non autorisés.")
-    if len(cible) > 253:
+    allowed_chars = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-_")
+    if not all(c in allowed_chars for c in target):
+        raise ValueError(f"Invalid target: '{target}' contains unauthorized characters.")
+    if len(target) > 253:
         # The DNS standard limits hostnames to 253 characters maximum
-        raise ValueError(f"Cible invalide : nom d'hôte trop long ({len(cible)} caractères).")
-    return cible
+        raise ValueError(f"Invalid target: hostname too long ({len(target)} characters).")
+    return target
 
 
-def valider_fichier_sortie(chemin: str) -> Path:
+def validate_output_file(path_str: str) -> Path:
     """Checks that the output path is safe (valid extension, no relative traversal)."""
-    chemin = chemin.strip()
-    if not chemin:
-        raise ValueError("Le nom du fichier de sortie ne peut pas être vide.")
-    extensions_valides = {".txt", ".json", ".csv", ".html", ".xml"}
-    path = Path(chemin)
-    if path.suffix.lower() not in extensions_valides:
-        raise ValueError(f"Extension invalide : '{path.suffix}'. Utilisez .txt, .json, .csv, .html ou .xml.")
+    path_str = path_str.strip()
+    if not path_str:
+        raise ValueError("Output file name cannot be empty.")
+    valid_extensions = {".txt", ".json", ".csv", ".html", ".xml"}
+    path = Path(path_str)
+    if path.suffix.lower() not in valid_extensions:
+        raise ValueError(f"Invalid extension: '{path.suffix}'. Use .txt, .json, .csv, .html or .xml.")
     # Block directory traversal in relative paths (e.g. ../../etc/passwd)
     if not path.is_absolute():
         try:
             path.resolve().relative_to(Path.cwd().resolve())
         except ValueError:
-            raise ValueError(f"Chemin non autorisé : '{chemin}' tente de sortir du dossier courant.")
+            raise ValueError(f"Unauthorized path: '{path_str}' attempts to escape the current directory.")
     return path
 
 
@@ -122,55 +122,55 @@ def parse_ports(port_str: str) -> List[int]:
             if "-" in part:
                 # Port range: "80-85" → ports 80, 81, 82, 83, 84, 85
                 start_str, end_str = part.split("-", 1)
-                start, end = valider_port(int(start_str)), valider_port(int(end_str))
+                start, end = validate_port(int(start_str)), validate_port(int(end_str))
                 if start > end:
                     start, end = end, start  # fix reversed range (e.g. "85-80")
                 ports.extend(range(start, end + 1))
             else:
                 # Single port
-                ports.append(valider_port(int(part)))
+                ports.append(validate_port(int(part)))
     except (ValueError, TypeError) as e:
-        raise ValueError(f"Spécification de ports invalide : {e}")
+        raise ValueError(f"Invalid port specification: {e}")
     if not ports:
-        raise ValueError("Aucun port valide trouvé dans la spécification.")
+        raise ValueError("No valid port found in the specification.")
     # sorted(set(...)) : remove duplicates and sort in ascending order
     return sorted(set(ports))
 
 
 def main(args: Optional[List[str]] = None) -> int:
     # Define all accepted command-line arguments
-    parser = argparse.ArgumentParser(description="Scanner de ports TCP")
-    parser.add_argument("--target", required=True, help="Hôte, IP ou sous-réseau CIDR cible")
+    parser = argparse.ArgumentParser(description="TCP Port Scanner")
+    parser.add_argument("--target", required=True, help="Target host, IP or CIDR subnet")
     parser.add_argument("--ports", required=True,
-                        help="Ports à scanner (ex. 1-1024 ou 22,80,443 ou 20-25,80)")
+                        help="Ports to scan (e.g. 1-1024 or 22,80,443 or 20-25,80)")
     parser.add_argument("--scan-type", choices=["connect", "syn"], default="connect",
-                        help="Type de scan (défaut: connect)")
+                        help="Scan type (default: connect)")
     parser.add_argument("--output", default="scan_results.txt",
-                        help="Fichier de sortie (.txt/.json/.csv/.html/.xml)")
+                        help="Output file (.txt/.json/.csv/.html/.xml)")
     parser.add_argument("--timeout", type=float, default=1.0,
-                        help="Délai par port en secondes (défaut: 1.0)")
+                        help="Per-port timeout in seconds (default: 1.0)")
     parser.add_argument("--threads", type=int, default=100,
-                        help="Nombre de threads parallèles (défaut: 100)")
+                        help="Number of parallel threads (default: 100)")
     parser.add_argument("--delay", type=float, default=0.0,
-                        help="Délai entre ports en secondes (défaut: 0)")
+                        help="Delay between ports in seconds (default: 0)")
     parser.add_argument("--discover", action="store_true",
-                        help="Activer le host discovery avant le scan")
+                        help="Enable host discovery before scanning")
     parser.add_argument("--banner", action="store_true",
-                        help="Activer le banner grabbing (ports ouverts uniquement)")
+                        help="Enable banner grabbing (open ports only)")
     parser.add_argument("--log-level", choices=["DEBUG", "INFO", "WARNING"], default="INFO",
-                        help="Niveau de log (défaut: INFO)")
+                        help="Log level (default: INFO)")
     parser.add_argument("--randomize", action="store_true",
-                        help="Randomiser l'ordre des ports pour réduire la détection")
+                        help="Randomize port order to reduce detection")
     parser.add_argument("--max-rate", type=float, default=0.0,
-                        help="Débit max en paquets/seconde (0 = illimité)")
+                        help="Max rate in packets/second (0 = unlimited)")
     parser.add_argument("--jitter", type=float, default=0.0,
-                        help="Variation aléatoire du délai en secondes (0 = désactivé)")
+                        help="Random delay variation in seconds (0 = disabled)")
     parser.add_argument("--os-detect", action="store_true",
-                        help="Tenter de détecter le système d'exploitation (nécessite scapy + sudo)")
+                        help="Attempt OS detection (requires scapy + sudo)")
     parser.add_argument("--version-detect", action="store_true",
-                        help="Détecter la version des services ouverts (probe actif par protocole)")
+                        help="Detect service versions (active protocol probing)")
     parser.add_argument("--firewall-detect", action="store_true",
-                        help="Distinguer les types de filtrage pare-feu (nécessite scapy + sudo)")
+                        help="Distinguish firewall filtering types (requires scapy + sudo)")
     parser.add_argument("--vuln-scan", action="store_true",
                         help="Search for known CVEs based on detected banners/versions (requires Internet)")
 
@@ -184,24 +184,24 @@ def main(args: Optional[List[str]] = None) -> int:
 
     # Validate numeric values before starting the scan
     if parsed.timeout <= 0:
-        print("Erreur : --timeout doit être strictement positif.")
+        print("Error: --timeout must be strictly positive.")
         return 1
     if parsed.threads < 1:
-        print("Erreur : --threads doit être >= 1.")
+        print("Error: --threads must be >= 1.")
         return 1
     if parsed.delay < 0:
-        print("Erreur : --delay doit être >= 0.")
+        print("Error: --delay must be >= 0.")
         return 1
     if parsed.max_rate < 0:
-        print("Erreur : --max-rate doit être >= 0.")
+        print("Error: --max-rate must be >= 0.")
         return 1
     if parsed.jitter < 0:
-        print("Erreur : --jitter doit être >= 0.")
+        print("Error: --jitter must be >= 0.")
         return 1
     if parsed.max_rate > 0 and parsed.threads > 1:
         # In max-rate mode, sends are serialised → multiple threads have no effect
-        print(f"Note : --max-rate sérialise les envois — --threads {parsed.threads} n'a pas d'effet. "
-              f"Les paquets seront envoyés à {parsed.max_rate} pkt/s.")
+        print(f"Note: --max-rate serialises sends — --threads {parsed.threads} has no effect. "
+              f"Packets will be sent at {parsed.max_rate} pkt/s.")
 
     if parsed.vuln_scan and not VULN_ANALYSIS_AVAILABLE:
         logging.warning("--vuln-scan is enabled but vuln_analyzer module (or requests library) is missing. "
@@ -209,11 +209,11 @@ def main(args: Optional[List[str]] = None) -> int:
 
     # Sanitise user inputs (protection against malformed values)
     try:
-        target_sanitise = valider_cible(parsed.target)
+        sanitised_target = validate_target(parsed.target)
         ports = parse_ports(parsed.ports)
-        out_path = valider_fichier_sortie(parsed.output)
+        out_path = validate_output_file(parsed.output)
     except ValueError as e:
-        print(f"Erreur : {e}")
+        print(f"Error: {e}")
         return 1
 
     # Create the destination directory if the output path contains subdirectories
@@ -222,8 +222,8 @@ def main(args: Optional[List[str]] = None) -> int:
     # Select the scan function based on the requested type
     if parsed.scan_type == "syn":
         if not SCAPY_AVAILABLE:
-            print("AVERTISSEMENT : scapy non disponible. Installez-le : pip install scapy")
-            print("Fallback sur TCP connect.")
+            print("WARNING: scapy not available. Install it: pip install scapy")
+            print("Falling back to TCP connect.")
             scan_fn = scan_port_connect
         else:
             scan_fn = scan_port_syn  # SYN scan via raw packets
@@ -236,39 +236,39 @@ def main(args: Optional[List[str]] = None) -> int:
     import ipaddress as _ipaddress
     _is_cidr = False
     try:
-        _ipaddress.ip_network(target_sanitise, strict=False)
-        _is_cidr = "/" in target_sanitise  # confirm it is a network, not a plain IP
+        _ipaddress.ip_network(sanitised_target, strict=False)
+        _is_cidr = "/" in sanitised_target  # confirm it is a network, not a plain IP
     except ValueError:
         pass
     if not _is_cidr:
         try:
-            target_sanitise = resoudre_cible(target_sanitise)
+            sanitised_target = resolve_target(sanitised_target)
         except OSError as e:
-            print(f"Erreur : impossible de résoudre '{target_sanitise}' — {e}")
+            print(f"Error: unable to resolve '{sanitised_target}' — {e}")
             return 1
 
     # Host discovery: detect active machines on the network before scanning their ports
     if parsed.discover:
         from discovery import discover_hosts
-        logging.info(f"Host discovery sur {target_sanitise}...")
-        targets = discover_hosts(target_sanitise, timeout=parsed.timeout)
+        logging.info(f"Host discovery on {sanitised_target}...")
+        targets = discover_hosts(sanitised_target, timeout=parsed.timeout)
         if not targets:
-            print("Aucun hôte actif trouvé.")
+            print("No active hosts found.")
             return 1
-        print(f"{len(targets)} hôte(s) actif(s) : {', '.join(targets)}")
+        print(f"{len(targets)} active host(s): {', '.join(targets)}")
     else:
         # No discovery: scan only the provided target
-        targets = [target_sanitise]
+        targets = [sanitised_target]
 
     # Dictionary to store results for all scanned hosts
     all_results: Dict[str, Dict[int, dict]] = {}
 
-    # --- FEATURE  : STATISTIK GENERATOR (début) ---
+    # --- FEATURE: STATISTIK GENERATOR (start) ---
     # Start the timer before the scan loop to measure total execution time across all hosts
     start_time = time.time()
 
     for target in targets:
-        print(f"\nScan de {target} — {len(ports)} ports ({parsed.scan_type})")
+        print(f"\nScanning {target} — {len(ports)} ports ({parsed.scan_type})")
 
         # Launch the multi-threaded scan over all ports
         raw = scan_range_threaded(
@@ -284,7 +284,7 @@ def main(args: Optional[List[str]] = None) -> int:
         os_guess = detect_os(target, timeout=parsed.timeout) if parsed.os_detect else ""
         if parsed.os_detect:
             if os_guess not in ("unknown", ""):
-                print(f"  OS détecté : {os_guess}")
+                print(f"  OS detected: {os_guess}")
             else:
                 logging.warning("OS detection skipped — requires scapy and sudo (root privileges).")
 
@@ -329,27 +329,27 @@ def main(args: Optional[List[str]] = None) -> int:
 
         all_results[target] = results
 
-    # Stop the timer after all hosts have been scanned      ---STATISTIK GENERATOR (fin)---
+    # Stop the timer after all hosts have been scanned      ---STATISTIK GENERATOR (end)---
     elapsed = time.time() - start_time
 
     # Display the global analytical summary via output.py
     # all_results is passed directly so every (host, port) pair is counted
     print_summary(all_results, elapsed)
-    # --- FEATURE  : STATISTIK GENERATOR (fin) ---
+    # --- FEATURE: STATISTIK GENERATOR (end) ---
 
     # Export results to a file
     if len(all_results) == 1:
         # Single host: standard behaviour
         target_key = list(all_results.keys())[0]
         write_output(all_results[target_key], out_path, target_key, parsed.scan_type)
-        print(f"\nRésultats sauvegardés dans {out_path}")
+        print(f"\nResults saved to {out_path}")
     else:
         # Multiple hosts: one file per host (base_name_IP.ext)
         for host_ip, host_results in all_results.items():
             safe_ip = host_ip.replace(".", "_").replace(":", "_")
             host_path = out_path.parent / f"{out_path.stem}_{safe_ip}{out_path.suffix}"
             write_output(host_results, host_path, host_ip, parsed.scan_type)
-            print(f"  Résultats de {host_ip} sauvegardés dans {host_path}")
+            print(f"  Results for {host_ip} saved to {host_path}")
 
     return 0
 

@@ -1,88 +1,88 @@
 # tests/test_sanitisation.py
-"""Tests pour les fonctions de validation des entrées utilisateur."""
+"""Tests for user input validation functions."""
 
 import pytest
 from pathlib import Path
-from main import valider_port, valider_cible, valider_fichier_sortie, parse_ports
+from main import validate_port, validate_target, validate_output_file, parse_ports
 
 
-# ── valider_port ─────────────────────────────────────────────────────────────
+# ── validate_port ─────────────────────────────────────────────────────────────
 
-def test_valider_port_valide():
-    assert valider_port(1) == 1
-    assert valider_port(80) == 80
-    assert valider_port(65535) == 65535
+def test_validate_port_valid():
+    assert validate_port(1) == 1
+    assert validate_port(80) == 80
+    assert validate_port(65535) == 65535
 
-def test_valider_port_zero():
+def test_validate_port_zero():
     with pytest.raises(ValueError):
-        valider_port(0)
+        validate_port(0)
 
-def test_valider_port_trop_grand():
+def test_validate_port_too_large():
     with pytest.raises(ValueError):
-        valider_port(65536)
+        validate_port(65536)
 
-def test_valider_port_negatif():
+def test_validate_port_negative():
     with pytest.raises(ValueError):
-        valider_port(-1)
+        validate_port(-1)
 
 
-# ── valider_cible ─────────────────────────────────────────────────────────────
+# ── validate_target ───────────────────────────────────────────────────────────
 
-def test_valider_cible_ip():
-    assert valider_cible("192.168.1.1") == "192.168.1.1"
+def test_validate_target_ip():
+    assert validate_target("192.168.1.1") == "192.168.1.1"
 
-def test_valider_cible_cidr():
-    assert valider_cible("192.168.1.0/24") == "192.168.1.0/24"
+def test_validate_target_cidr():
+    assert validate_target("192.168.1.0/24") == "192.168.1.0/24"
 
-def test_valider_cible_hostname():
-    assert valider_cible("mon-serveur.local") == "mon-serveur.local"
+def test_validate_target_hostname():
+    assert validate_target("my-server.local") == "my-server.local"
 
-def test_valider_cible_localhost():
-    assert valider_cible("127.0.0.1") == "127.0.0.1"
+def test_validate_target_localhost():
+    assert validate_target("127.0.0.1") == "127.0.0.1"
 
-def test_valider_cible_vide():
+def test_validate_target_empty():
     with pytest.raises(ValueError):
-        valider_cible("")
+        validate_target("")
 
-def test_valider_cible_caracteres_interdits():
+def test_validate_target_forbidden_chars():
     with pytest.raises(ValueError):
-        valider_cible("192.168.1.1; rm -rf /")
+        validate_target("192.168.1.1; rm -rf /")
 
-def test_valider_cible_trop_long():
+def test_validate_target_too_long():
     with pytest.raises(ValueError):
-        valider_cible("a" * 254)
+        validate_target("a" * 254)
 
 
-# ── valider_fichier_sortie ────────────────────────────────────────────────────
+# ── validate_output_file ─────────────────────────────────────────────────────
 
-def test_valider_fichier_sortie_txt():
-    p = valider_fichier_sortie("scan.txt")
+def test_validate_output_file_txt():
+    p = validate_output_file("scan.txt")
     assert isinstance(p, Path)
 
-def test_valider_fichier_sortie_json():
-    assert valider_fichier_sortie("resultats.json").suffix == ".json"
+def test_validate_output_file_json():
+    assert validate_output_file("results.json").suffix == ".json"
 
-def test_valider_fichier_sortie_csv():
-    assert valider_fichier_sortie("scan.csv").suffix == ".csv"
+def test_validate_output_file_csv():
+    assert validate_output_file("scan.csv").suffix == ".csv"
 
-def test_valider_fichier_sortie_html():
-    assert valider_fichier_sortie("rapport.html").suffix == ".html"
+def test_validate_output_file_html():
+    assert validate_output_file("report.html").suffix == ".html"
 
-def test_valider_fichier_sortie_extension_invalide():
+def test_validate_output_file_invalid_extension():
     with pytest.raises(ValueError):
-        valider_fichier_sortie("scan.exe")
+        validate_output_file("scan.exe")
 
-def test_valider_fichier_sortie_vide():
+def test_validate_output_file_empty():
     with pytest.raises(ValueError):
-        valider_fichier_sortie("")
+        validate_output_file("")
 
-def test_valider_fichier_sortie_traversal_relatif():
+def test_validate_output_file_relative_traversal():
     with pytest.raises(ValueError):
-        valider_fichier_sortie("../../etc/passwd.txt")
+        validate_output_file("../../etc/passwd.txt")
 
-def test_valider_fichier_sortie_absolu_autorise(tmp_path):
-    # Les chemins absolus hors cwd sont autorisés (ex. /tmp/scan.json)
-    p = valider_fichier_sortie(str(tmp_path / "scan.json"))
+def test_validate_output_file_absolute_allowed(tmp_path):
+    # Absolute paths outside cwd are allowed (e.g. /tmp/scan.json)
+    p = validate_output_file(str(tmp_path / "scan.json"))
     assert p.suffix == ".json"
 
 
@@ -91,47 +91,47 @@ def test_valider_fichier_sortie_absolu_autorise(tmp_path):
 def test_parse_ports_simple():
     assert parse_ports("80") == [80]
 
-def test_parse_ports_plage():
+def test_parse_ports_range():
     assert parse_ports("20-22") == [20, 21, 22]
 
-def test_parse_ports_liste():
+def test_parse_ports_list():
     assert parse_ports("22,80,443") == [22, 80, 443]
 
-def test_parse_ports_combinaison():
+def test_parse_ports_combination():
     assert parse_ports("22,80-82,443") == [22, 80, 81, 82, 443]
 
-def test_parse_ports_dedoublonne():
+def test_parse_ports_deduplicates():
     assert parse_ports("80,80,80") == [80]
 
-def test_parse_ports_plage_inversee():
-    # L'ordre inversé est corrigé silencieusement
+def test_parse_ports_reversed_range():
+    # Reversed range is silently corrected
     assert parse_ports("85-80") == [80, 81, 82, 83, 84, 85]
 
 def test_parse_ports_port_zero():
     with pytest.raises(ValueError):
         parse_ports("0")
 
-def test_parse_ports_port_trop_grand():
+def test_parse_ports_port_too_large():
     with pytest.raises(ValueError):
         parse_ports("65536")
 
-def test_parse_ports_vide():
+def test_parse_ports_empty():
     with pytest.raises(ValueError):
         parse_ports("")
 
-def test_parse_ports_invalide():
+def test_parse_ports_invalid():
     with pytest.raises(ValueError):
         parse_ports("abc")
 
 
 # ── threads validation ────────────────────────────────────────────────────────
 
-def test_threads_zero_retourne_erreur():
+def test_threads_zero_returns_error():
     from main import main
     result = main(["--target", "127.0.0.1", "--ports", "80", "--threads", "0"])
     assert result == 1
 
-def test_threads_negatif_retourne_erreur():
+def test_threads_negative_returns_error():
     from main import main
     result = main(["--target", "127.0.0.1", "--ports", "80", "--threads", "-1"])
     assert result == 1

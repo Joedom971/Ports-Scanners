@@ -26,64 +26,64 @@ def _print_safe(text: str) -> None:
 # ── Speed → technical parameters ──────────────────────────────────────────────
 # Each speed automatically configures threads, timeout, delay and stealth options.
 # The user picks a simple speed; the technical details are handled here.
-VITESSES = {
+SPEEDS = {
     # LAN: short timeout, many threads — responses arrive in < 10ms on a local network
-    "Rapide  (réseau local)":    {"threads": 400, "timeout": 0.3, "delay": 0.0, "jitter": 0.0,  "max_rate": 0.0,  "randomize": False},
+    "Fast    (local network)":    {"threads": 400, "timeout": 0.3, "delay": 0.0, "jitter": 0.0,  "max_rate": 0.0,  "randomize": False},
     # Normal: balanced for LAN/WAN — 1.0s absorbs latency spikes, 100 threads avoids socket/NAT exhaustion
-    "Normal  (recommandé)":      {"threads": 100, "timeout": 1.0, "delay": 0.0, "jitter": 0.0,  "max_rate": 0.0,  "randomize": False},
+    "Normal  (recommended)":      {"threads": 100, "timeout": 1.0, "delay": 0.0, "jitter": 0.0,  "max_rate": 0.0,  "randomize": False},
     # Slow: fewer threads and inter-port delay to reduce network noise
-    "Lent    (discret)":         {"threads": 20,  "timeout": 2.0, "delay": 0.1, "jitter": 0.0,  "max_rate": 0.0,  "randomize": False},
+    "Slow    (discreet)":         {"threads": 20,  "timeout": 2.0, "delay": 0.1, "jitter": 0.0,  "max_rate": 0.0,  "randomize": False},
     # Stealth: few threads, rate limited to 2 packets/s, randomised port order
-    "Furtif  (anti-détection)":  {"threads": 5,   "timeout": 3.0, "delay": 0.0, "jitter": 0.0,  "max_rate": 2.0,  "randomize": True},
+    "Stealth (anti-detection)":   {"threads": 5,   "timeout": 3.0, "delay": 0.0, "jitter": 0.0,  "max_rate": 2.0,  "randomize": True},
 }
 
 # ── Scan profiles ──────────────────────────────────────────────────────────────
 # Maps each profile to a port specification (None = the user enters their own)
-PROFILS = {
-    "Scan rapide   — ports courants (web, SSH, bureau à distance)": "22,80,443,3389,8080",
-    "Scan standard — tous les ports réservés (1 à 1024)":          "1-1024",
-    "Scan complet  — tous les ports (1 à 65535, lent)":            "1-65535",
-    "Personnalisé  — je choisis moi-même":                         None,
+PROFILES = {
+    "Quick scan    — common ports (web, SSH, remote desktop)": "22,80,443,3389,8080",
+    "Standard scan — all reserved ports (1 to 1024)":          "1-1024",
+    "Full scan     — all ports (1 to 65535, slow)":            "1-65535",
+    "Custom        — I choose myself":                         None,
 }
 
 
-def choisir(question: str, options: list, defaut_idx: int = 0) -> str:
+def choose(question: str, options: list, default_idx: int = 0) -> str:
     """Displays a numbered menu and returns the option chosen by the user."""
     print(f"\n  {question}")
     for i, opt in enumerate(options, 1):
-        marqueur = "  ← recommandé" if i == defaut_idx + 1 else ""
-        print(f"    {i}. {opt}{marqueur}")
+        marker = "  <- recommended" if i == default_idx + 1 else ""
+        print(f"    {i}. {opt}{marker}")
     while True:
-        rep = input(f"  Votre choix [Entrée = {defaut_idx + 1}] : ").strip()
+        rep = input(f"  Your choice [Enter = {default_idx + 1}] : ").strip()
         if not rep:
             # Empty input → use the default choice
-            return options[defaut_idx]
+            return options[default_idx]
         if rep.isdigit() and 1 <= int(rep) <= len(options):
             return options[int(rep) - 1]
-        print("  Choix invalide, entrez un numéro.")
+        print("  Invalid choice, enter a number.")
 
 
-def demander(question: str, defaut: str = "") -> str:
+def ask(question: str, default: str = "") -> str:
     """Displays a question and returns the user's input (or the default value)."""
-    indication = f" [Entrée = {defaut}]" if defaut else ""
-    rep = input(f"  {question}{indication} : ").strip()
-    return rep if rep else defaut  # if the user presses Enter, use the default
+    hint = f" [Enter = {default}]" if default else ""
+    rep = input(f"  {question}{hint} : ").strip()
+    return rep if rep else default  # if the user presses Enter, use the default
 
 
-def oui_non(question: str, defaut: bool = True) -> bool:
+def yes_no(question: str, default: bool = True) -> bool:
     """Asks a yes/no question and returns True or False."""
-    indication = "[O/n]" if defaut else "[o/N]"
-    rep = input(f"  {question} {indication} : ").strip().lower()
+    hint = "[Y/n]" if default else "[y/N]"
+    rep = input(f"  {question} {hint} : ").strip().lower()
     if not rep:
-        return defaut  # empty input → default value
-    # Accept "o", "oui", "y", "yes" as a positive answer
-    return rep in ("o", "oui", "y", "yes")
+        return default  # empty input → default value
+    # Accept "y", "yes", "o", "oui" as a positive answer
+    return rep in ("y", "yes", "o", "oui")
 
 
-def separateur(titre: str = "") -> None:
+def separator(title: str = "") -> None:
     """Displays a visual separator line with an optional title."""
-    if titre:
-        print(f"\n  ── {titre} {'─' * (44 - len(titre))}")
+    if title:
+        print(f"\n  ── {title} {'─' * (44 - len(title))}")
     else:
         print(f"\n  {'─' * 48}")
 
@@ -91,61 +91,61 @@ def separateur(titre: str = "") -> None:
 def main() -> int:
     # Detect whether the program is running with root privileges (uid 0)
     # getattr with a lambda avoids an error on Windows where os.geteuid does not exist
-    est_root = getattr(os, "geteuid", lambda: 1)() == 0
+    is_root = getattr(os, "geteuid", lambda: 1)() == 0
 
     # Display the header with the automatically detected scan mode
     _print_safe("\n╔══════════════════════════════════════════════╗")
-    _print_safe("║          Scanner de ports réseau             ║")
-    if est_root:
-        _print_safe("║  Mode : SYN scan (avancé, root détecté)      ║")
+    _print_safe("║           Network Port Scanner               ║")
+    if is_root:
+        _print_safe("║  Mode: SYN scan (advanced, root detected)    ║")
     else:
-        _print_safe("║  Mode : TCP connect (standard)               ║")
+        _print_safe("║  Mode: TCP connect (standard)                ║")
     _print_safe("╚══════════════════════════════════════════════╝")
-    print("\n  Répondez aux questions ci-dessous.")
-    print("  Appuyez sur Entrée pour garder la valeur recommandée.")
+    print("\n  Answer the questions below.")
+    print("  Press Enter to keep the recommended value.")
 
-    # ── 1. Cible ──────────────────────────────────────────────────────────────
-    separateur("Quelle machine voulez-vous analyser ?")
-    print("  Exemples : 192.168.1.1  |  monserveur.local  |  192.168.1.0/24")
-    target = demander("Adresse IP ou nom de la machine", "127.0.0.1")
+    # ── 1. Target ─────────────────────────────────────────────────────────────
+    separator("Which machine do you want to scan?")
+    print("  Examples: 192.168.1.1  |  myserver.local  |  192.168.1.0/24")
+    target = ask("IP address or hostname", "127.0.0.1")
 
-    # ── 2. Profil ─────────────────────────────────────────────────────────────
-    separateur("Que voulez-vous scanner ?")
-    profil_choisi = choisir(
-        "Choisissez un profil :",
-        list(PROFILS.keys()),
-        defaut_idx=0,
+    # ── 2. Profile ────────────────────────────────────────────────────────────
+    separator("What do you want to scan?")
+    chosen_profile = choose(
+        "Choose a profile:",
+        list(PROFILES.keys()),
+        default_idx=0,
     )
-    ports = PROFILS[profil_choisi]
+    ports = PROFILES[chosen_profile]
     if ports is None:
         # "Custom" profile: the user enters their own ports
-        print("\n  Exemples : 80  |  22,80,443  |  1-1024  |  22,80-85")
-        ports = demander("Entrez les ports à scanner", "22,80,443")
+        print("\n  Examples: 80  |  22,80,443  |  1-1024  |  22,80-85")
+        ports = ask("Enter the ports to scan", "22,80,443")
 
-    # ── 3. Vitesse ────────────────────────────────────────────────────────────
-    separateur("Quelle vitesse de scan ?")
-    vitesse_choisie = choisir(
-        "Choisissez une vitesse :",
-        list(VITESSES.keys()),
-        defaut_idx=1,  # "Normal" is the recommended default
+    # ── 3. Speed ──────────────────────────────────────────────────────────────
+    separator("Scan speed?")
+    chosen_speed = choose(
+        "Choose a speed:",
+        list(SPEEDS.keys()),
+        default_idx=1,  # "Normal" is the recommended default
     )
     # Retrieve the technical parameters associated with the chosen speed
-    perf = VITESSES[vitesse_choisie]
+    perf = SPEEDS[chosen_speed]
 
-    # ── 4. Options extras ─────────────────────────────────────────────────────
-    separateur("Options supplémentaires")
+    # ── 4. Extra options ──────────────────────────────────────────────────────
+    separator("Additional options")
 
-    if est_root:
+    if is_root:
         # In SYN scan mode, several options are automatically disabled to preserve stealth.
         # Each disabled option is explained so the user understands why it is unavailable.
-        print("  Mode SYN actif — options incompatibles avec la furtivité désactivées :\n")
-        print("  [✗] Découverte réseau  — ARP sweep / ping ICMP génèrent du bruit détectable")
-        print("      avant même le début du scan de ports.")
-        print("  [✗] Banner grabbing    — ouvre une connexion TCP complète (SYN+ACK+ACK)")
-        print("      enregistrée dans les logs applicatifs du serveur cible.")
-        print("  [✗] Détection version  — même raison que le banner grabbing.")
-        print("  [✗] Détection pare-feu — envoie des probes SYN supplémentaires sur chaque port")
-        print("      filtré, ce qui multiplie le trafic détectable.")
+        print("  SYN mode active — options incompatible with stealth disabled:\n")
+        print("  [x] Network discovery  — ARP sweep / ICMP ping generate detectable noise")
+        print("      before the port scan even begins.")
+        print("  [x] Banner grabbing    — opens a full TCP connection (SYN+ACK+ACK)")
+        print("      logged by the target's application layer.")
+        print("  [x] Version detection  — same reason as banner grabbing.")
+        print("  [x] Firewall detection — sends additional SYN probes on each filtered")
+        print("      port, multiplying detectable traffic.")
         print()
         discover        = False
         banner          = False
@@ -153,77 +153,77 @@ def main() -> int:
         vuln_scan       = False
         firewall_detect = False
     else:
-        print("  (Entrée = non pour toutes)")
+        print("  (Enter = no for all)")
         # In TCP connect mode, all options are available freely
-        discover = oui_non(
-            "Chercher d'abord les appareils actifs sur le réseau ?",
-            defaut=False,
+        discover = yes_no(
+            "Search for active devices on the network first?",
+            default=False,
         )
-        banner = oui_non(
-            "Afficher les infos des services trouvés (version, bannière) ?",
-            defaut=False,
+        banner = yes_no(
+            "Display service info (version, banner)?",
+            default=False,
         )
-        version_detect = oui_non(
-            "Détecter la version des services trouvés (ex: Apache/2.4) ?",
-            defaut=False,
+        version_detect = yes_no(
+            "Detect service versions (e.g. Apache/2.4)?",
+            default=False,
         )
         # Vuln scan only makes sense if we have banners or versions to analyse
         vuln_scan = False
         if version_detect or banner:
-            vuln_scan = oui_non(
-                "Rechercher des vulnérabilités (CVE) sur ces versions (nécessite Internet) ?",
-                defaut=False,
+            vuln_scan = yes_no(
+                "Search for vulnerabilities (CVE) on these versions (requires Internet)?",
+                default=False,
             )
 
     # In SYN mode, firewall_detect was already set to False above.
     # In TCP connect mode, ask the user — firewall-detect needs sudo.
-    if not est_root:
-        firewall_detect_asked = oui_non(
-            "Détecter le type de pare-feu (DROP silencieux vs REJECT actif) ?",
-            defaut=False,
+    if not is_root:
+        firewall_detect_asked = yes_no(
+            "Detect firewall type (silent DROP vs active REJECT)?",
+            default=False,
         )
         if firewall_detect_asked:
-            print("  Note : --firewall-detect nécessite sudo (macOS/Linux) ou admin (Windows).")
+            print("  Note: --firewall-detect requires sudo (macOS/Linux) or admin (Windows).")
         firewall_detect = False  # not root → can't use scapy anyway
 
-    os_detect_asked = oui_non(
-        "Tenter de détecter l'OS de la cible ?",
-        defaut=False,
+    os_detect_asked = yes_no(
+        "Attempt to detect the target OS?",
+        default=False,
     )
-    if os_detect_asked and not est_root:
-        print("  Note : --os-detect nécessite sudo (macOS/Linux) ou admin (Windows).")
-    os_detect = os_detect_asked and est_root
+    if os_detect_asked and not is_root:
+        print("  Note: --os-detect requires sudo (macOS/Linux) or admin (Windows).")
+    os_detect = os_detect_asked and is_root
 
-    # ── 5. Rapport ────────────────────────────────────────────────────────────
-    separateur("Où sauvegarder les résultats ?")
-    format_choisi = choisir(
-        "Format du rapport :",
+    # ── 5. Report ─────────────────────────────────────────────────────────────
+    separator("Where to save the results?")
+    chosen_format = choose(
+        "Report format:",
         [
-            "Rapport visuel HTML  (s'ouvre dans un navigateur)",
-            "Fichier texte .txt   (simple)",
-            "Tableau CSV          (Excel / tableur)",
-            "Données JSON         (développeurs)",
+            "Visual HTML report  (opens in a browser)",
+            "Plain text .txt     (simple)",
+            "CSV table           (Excel / spreadsheet)",
+            "JSON data           (developers)",
         ],
-        defaut_idx=0,
+        default_idx=0,
     )
     # Determine the file extension based on the chosen format
-    if "HTML" in format_choisi:
+    if "HTML" in chosen_format:
         ext = ".html"
-    elif ".txt" in format_choisi:
+    elif ".txt" in chosen_format:
         ext = ".txt"
-    elif "CSV" in format_choisi:
+    elif "CSV" in chosen_format:
         ext = ".csv"
     else:
         ext = ".json"
 
-    nom_fichier = demander("Nom du fichier de résultats", f"scan_results{ext}")
+    filename = ask("Results file name", f"scan_results{ext}")
     # Ensure the file has the correct extension
-    if not nom_fichier.endswith(ext):
-        nom_fichier += ext
+    if not filename.endswith(ext):
+        filename += ext
 
     # ── Summary ───────────────────────────────────────────────────────────────
     # The scan type is determined automatically based on root privileges
-    scan_type_val = "syn" if est_root else "connect"
+    scan_type_val = "syn" if is_root else "connect"
     threads   = perf["threads"]
     timeout   = perf["timeout"]
     delay     = perf["delay"]
@@ -234,7 +234,7 @@ def main() -> int:
     # In SYN scan mode, force stealth settings regardless of the chosen speed profile:
     #   - randomize: shuffles port order to avoid sequential scanning signatures (IDS)
     #   - jitter: adds random variation to inter-packet timing to break regular patterns
-    if est_root:
+    if is_root:
         randomize = True
         jitter = max(jitter, 0.05)  # minimum 50ms jitter if not already set higher
 
@@ -244,24 +244,24 @@ def main() -> int:
 
     # Display a summary of all parameters before launching the scan
     _print_safe("\n╔══════════════════════════════════════════════╗")
-    _print_safe("║               Récapitulatif                  ║")
+    _print_safe("║                  Summary                     ║")
     _print_safe("╠══════════════════════════════════════════════╣")
-    _print_safe(f"║  Cible       : {_trunc(target):<31}║")
+    _print_safe(f"║  Target      : {_trunc(target):<31}║")
     _print_safe(f"║  Ports       : {_trunc(ports):<31}║")
-    _print_safe(f"║  Vitesse     : {_trunc(vitesse_choisie.split('(')[0].strip()):<31}║")
+    _print_safe(f"║  Speed       : {_trunc(chosen_speed.split('(')[0].strip()):<31}║")
     _print_safe(f"║  Mode        : {scan_type_val:<31}║")
-    if not est_root:
-        _print_safe(f"║  Découverte  : {'oui' if discover else 'non':<31}║")
-        _print_safe(f"║  Infos srv.  : {'oui' if banner else 'non':<31}║")
-        _print_safe(f"║  Ver. svc    : {'oui' if version_detect else 'non':<31}║")
-        _print_safe(f"║  Anal. CVE   : {'oui' if vuln_scan else 'non':<31}║")
-        _print_safe(f"║  Pare-feu    : {'oui' if firewall_detect else 'non':<31}║")
-    _print_safe(f"║  Détect. OS  : {'oui' if os_detect else 'non':<31}║")
-    _print_safe(f"║  Rapport     : {_trunc(nom_fichier):<31}║")
+    if not is_root:
+        _print_safe(f"║  Discovery   : {'yes' if discover else 'no':<31}║")
+        _print_safe(f"║  Svc info    : {'yes' if banner else 'no':<31}║")
+        _print_safe(f"║  Svc version : {'yes' if version_detect else 'no':<31}║")
+        _print_safe(f"║  CVE scan    : {'yes' if vuln_scan else 'no':<31}║")
+        _print_safe(f"║  Firewall    : {'yes' if firewall_detect else 'no':<31}║")
+    _print_safe(f"║  OS detect   : {'yes' if os_detect else 'no':<31}║")
+    _print_safe(f"║  Report      : {_trunc(filename):<31}║")
     _print_safe("╚══════════════════════════════════════════════╝")
 
-    if not oui_non("\nLancer le scan ?", defaut=True):
-        print("\n  Scan annulé.")
+    if not yes_no("\nStart the scan?", default=True):
+        print("\n  Scan cancelled.")
         return 0
 
     # ── Launch ────────────────────────────────────────────────────────────────
@@ -273,7 +273,7 @@ def main() -> int:
         "--target",    target,
         "--ports",     ports,
         "--scan-type", scan_type_val,
-        "--output",    nom_fichier,
+        "--output",    filename,
         "--timeout",   str(timeout),
         "--threads",   str(threads),
         "--delay",     str(delay),
@@ -301,7 +301,7 @@ def main() -> int:
     try:
         return run_scan(scan_args)
     except KeyboardInterrupt:
-        print("\n\n  Scan interrompu.")
+        print("\n\n  Scan interrupted.")
         return 1
 
 
@@ -309,5 +309,5 @@ if __name__ == "__main__":
     try:
         raise SystemExit(main())
     except KeyboardInterrupt:
-        print("\n\n  Annulé.")
+        print("\n\n  Cancelled.")
         raise SystemExit(1)

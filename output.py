@@ -165,7 +165,7 @@ def _write_html(results: Dict[int, dict], path: Path, target: str, scan_type: st
 
     # Full HTML template with embedded CSS (no external dependency)
     html = f"""<!DOCTYPE html>
-<html lang="fr">
+<html lang="en">
 <head><meta charset="UTF-8"><title>Scan — {safe_target}</title>
 <style>
   body {{ font-family: monospace; background: #1a1a2e; color: #eee; padding: 2rem; }}
@@ -181,8 +181,8 @@ def _write_html(results: Dict[int, dict], path: Path, target: str, scan_type: st
 </style>
 </head>
 <body>
-<h1>Rapport de scan</h1>
-<div class="meta">Cible : <strong>{safe_target}</strong> | Type : {safe_scan_type} | Date : {now}</div>
+<h1>Scan Report</h1>
+<div class="meta">Target: <strong>{safe_target}</strong> | Type: {safe_scan_type} | Date: {now}</div>
 <div class="stats">
   <span class="stat-open">open: {counts['open']}</span> &nbsp;
   <span class="stat-closed">closed: {counts['closed']}</span> &nbsp;
@@ -190,7 +190,7 @@ def _write_html(results: Dict[int, dict], path: Path, target: str, scan_type: st
   {f'<span class="stat-vuln">⚠ {vuln_count} CVE(s) detected</span>' if vuln_count > 0 else ''}
 </div>
 <table>
-<tr><th>Port</th><th>Service</th><th>Statut</th><th>Banner</th><th>Version</th><th>Firewall</th><th>Vulnerabilities</th></tr>
+<tr><th>Port</th><th>Service</th><th>Status</th><th>Banner</th><th>Version</th><th>Firewall</th><th>Vulnerabilities</th></tr>
 {rows}
 </table>
 </body>
@@ -198,7 +198,7 @@ def _write_html(results: Dict[int, dict], path: Path, target: str, scan_type: st
     path.write_text(html, encoding="utf-8")
 
 
-# --- FEATURE  : STATISTIK GENERATOR ---
+# --- FEATURE: STATISTIK GENERATOR ---
 def print_summary(all_results: Dict[str, Dict[int, dict]], elapsed: float) -> None:
     """Prints an analytical scan summary to the console.
 
@@ -251,16 +251,16 @@ def print_summary(all_results: Dict[str, Dict[int, dict]], elapsed: float) -> No
     total = len(all_infos)  # total number of (host, port) pairs scanned
 
     # Percentage of open ports — guard against division by zero
-    pourcentage = (open_count / total * 100) if total > 0 else 0.0
+    percentage = (open_count / total * 100) if total > 0 else 0.0
 
-    print("\n--- Résumé du Scan ---")
-    print(f"  Ports scannés   : {total}")
-    print(f"  Ports ouverts   : {open_count}")
-    print(f"  Ports fermés    : {closed_count}")
-    print(f"  Ports filtrés   : {filtered_count}", end="")
+    print("\n--- Scan Summary ---")
+    print(f"  Ports scanned   : {total}")
+    print(f"  Ports open      : {open_count}")
+    print(f"  Ports closed    : {closed_count}")
+    print(f"  Ports filtered  : {filtered_count}", end="")
     # Display the silent/active detail only if firewall data is available
     if firewall_silent or firewall_active:
         print(f"  (silent: {firewall_silent}, active: {firewall_active})", end="")
     print()
-    print(f"  Taux d'ouverts  : {pourcentage:.2f}%")
-    print(f"  Temps d'exécut. : {elapsed:.2f} secondes")
+    print(f"  Open rate       : {percentage:.2f}%")
+    print(f"  Execution time  : {elapsed:.2f} seconds")

@@ -12,6 +12,10 @@ import requests
 
 NVD_API_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 
+# --- IN-MEMORY CACHE ---
+# Structure: { "software:version": [ {id, cvss, description}, ... ] }
+_CVE_CACHE: Dict[str, List[Dict]] = {}
+
 
 def parse_banner(banner: str) -> Optional[Tuple[str, str]]:
     """Extracts (software, version) from a service banner string."""
@@ -41,6 +45,12 @@ def analyze_vulnerabilities(banner: str) -> List[Dict]:
         return []
 
     software, version = parsed
+    cache_key = f"{software}:{version}"
+
+    # Return cached results if already queried
+    if cache_key in _CVE_CACHE:
+        return _CVE_CACHE[cache_key]
+
     vulnerabilities = []
 
     # Try a precise query first, then a broader one if no results
@@ -90,4 +100,6 @@ def analyze_vulnerabilities(banner: str) -> List[Dict]:
         except Exception as e:
             print(f"[!] Error: {e}")
 
-    return sorted(vulnerabilities, key=lambda x: x["cvss"], reverse=True)
+    result = sorted(vulnerabilities, key=lambda x: x["cvss"], reverse=True)
+    _CVE_CACHE[cache_key] = result
+    return result
