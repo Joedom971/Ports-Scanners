@@ -60,7 +60,7 @@
 ║                  Summary                     ║
 ╠══════════════════════════════════════════════╣
 ║  Target      : 192.168.1.1                   ║
-║  Ports       : 22,80,443,3389,8080           ║
+║  Ports       : 21,22,23,25,53,80,111,...(26)  ║
 ║  Speed       : Normal                        ║
 ║  Mode        : connect                       ║
 ║  Discovery   : no                            ║
@@ -74,7 +74,7 @@
 
 Start the scan? [Y/n] :
 
-Scanning 192.168.1.1 — 5 ports (connect)
+Scanning 192.168.1.1 — 26 ports (connect)
 
 --- Scan Summary ---
   Ports scanned   : 5

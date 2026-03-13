@@ -4,6 +4,7 @@ Parses service banners to extract software name and version,
 then searches for critical vulnerabilities (CVSS >= 7.0).
 """
 
+import logging
 import re
 import time
 from typing import Dict, List, Optional, Tuple
@@ -20,15 +21,15 @@ _CVE_CACHE: Dict[str, List[Dict]] = {}
 def parse_banner(banner: str) -> Optional[Tuple[str, str]]:
     """Extracts (software, version) from a service banner string."""
     b = banner.lower()
-    # Known Metasploitable services — hardcoded for reliable extraction
-    if "vsftpd" in b:
-        return "vsftpd", "2.3.4"
-    if "openssh" in b:
-        return "openssh", "4.7"
-    if "postfix" in b:
-        return "postfix", "2.3"
 
-    match = re.search(r"([a-z\-]+)[/\s_](\d+\.\d+)", b)
+    # SSH banners: extract OpenSSH version, not protocol version (SSH-2.0)
+    ssh_match = re.search(r"openssh[_\s](\d+(?:\.\d+)+)", b)
+    if ssh_match:
+        return "openssh", ssh_match.group(1)
+
+    # Generic pattern: software/version or software_version or software version
+    # Captures full version including patch level (e.g. 2.3.4, 2.2.8)
+    match = re.search(r"([a-z][\w\-]*)[/\s_](\d+(?:\.\d+)+)", b)
     if match:
         return match.group(1), match.group(2)
     return None
@@ -64,14 +65,14 @@ def analyze_vulnerabilities(banner: str) -> List[Dict]:
             # Rate-limit: NVD enforces ~1 request/second for unauthenticated users
             time.sleep(1.5)
 
-            print(f"[*] NVD search: {query}...")
+            logging.debug(f"NVD search: {query}...")
             params = {"keywordSearch": query, "resultsPerPage": 10}
             headers = {"User-Agent": "Mozilla/5.0"}
 
             response = requests.get(NVD_API_URL, params=params, headers=headers, timeout=15)
 
             if response.status_code != 200:
-                print(f"[!] NVD status: {response.status_code} (rate limit possible)")
+                logging.warning(f"NVD status: {response.status_code} (rate limit possible)")
                 continue
 
             data = response.json()
@@ -98,7 +99,7 @@ def analyze_vulnerabilities(banner: str) -> List[Dict]:
                 break
 
         except Exception as e:
-            print(f"[!] Error: {e}")
+            logging.warning(f"NVD error: {e}")
 
     result = sorted(vulnerabilities, key=lambda x: x["cvss"], reverse=True)
     _CVE_CACHE[cache_key] = result

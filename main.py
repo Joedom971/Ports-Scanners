@@ -18,6 +18,7 @@ Usage:
 
 import argparse
 import logging
+import os
 import sys
 import time
 from pathlib import Path
@@ -248,7 +249,8 @@ def main(args: Optional[List[str]] = None) -> int:
             return 1
 
     # Host discovery: detect active machines on the network before scanning their ports
-    if parsed.discover:
+    # Discovery only makes sense on CIDR ranges — skip for single IPs/hostnames
+    if parsed.discover and "/" in sanitised_target:
         from discovery import discover_hosts
         logging.info(f"Host discovery on {sanitised_target}...")
         targets = discover_hosts(sanitised_target, timeout=parsed.timeout)
@@ -257,6 +259,8 @@ def main(args: Optional[List[str]] = None) -> int:
             return 1
         print(f"{len(targets)} active host(s): {', '.join(targets)}")
     else:
+        if parsed.discover and "/" not in sanitised_target:
+            print(f"Note: --discover ignored for single target {sanitised_target}")
         # No discovery: scan only the provided target
         targets = [sanitised_target]
 
@@ -285,8 +289,12 @@ def main(args: Optional[List[str]] = None) -> int:
         if parsed.os_detect:
             if os_guess not in ("unknown", ""):
                 print(f"  OS detected: {os_guess}")
+            elif not SCAPY_AVAILABLE:
+                logging.warning("OS detection skipped — scapy is not installed.")
+            elif getattr(os, "geteuid", lambda: 1)() != 0:
+                logging.warning("OS detection skipped — requires sudo (root privileges).")
             else:
-                logging.warning("OS detection skipped — requires scapy and sudo (root privileges).")
+                logging.info("OS detection: no response from target.")
 
         # Enrichment: add the service name and banner to each raw result
         results: Dict[int, dict] = {}

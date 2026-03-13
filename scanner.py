@@ -22,6 +22,7 @@ Status values:
 import errno
 import ipaddress
 import random
+import re
 import socket
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -171,13 +172,43 @@ def grab_banner(ip: str, port: int, timeout: float = 2.0) -> str:
 
 # Protocol-specific probes sent to identify the service version
 _SERVICE_PROBES: Dict[str, bytes] = {
-    "http":   b"HEAD / HTTP/1.0\r\nHost: localhost\r\n\r\n",
-    "ftp":    b"",    # the server sends the banner immediately upon connection
-    "smtp":   b"EHLO probe\r\n",
-    "ssh":    b"",    # same
-    "pop3":   b"",
-    "imap":   b"",
-    "telnet": b"",
+    # Web
+    "http":       b"HEAD / HTTP/1.0\r\nHost: localhost\r\n\r\n",
+    "https":      b"",         # TLS handshake required — fallback to generic \r\n
+    # Mail
+    "smtp":       b"EHLO probe\r\n",
+    "smtp submission": b"EHLO probe\r\n",
+    "smtps":      b"EHLO probe\r\n",
+    "pop3":       b"",         # banner on connect
+    "pop3s":      b"",
+    "imap":       b"",         # banner on connect
+    "imaps":      b"",
+    # Remote access
+    "ssh":        b"",         # banner on connect
+    "ftp":        b"",         # banner on connect
+    "ftp-data":   b"",
+    "ftps":       b"",
+    "telnet":     b"",         # banner on connect
+    # Databases
+    "mysql":      b"",         # MySQL sends greeting packet on connect
+    "postgresql":  b"",        # PostgreSQL sends error on raw connect (contains version)
+    # DNS — version.bind query (TXT class CHAOS)
+    "dns":        b"\x00\x1e"  # length prefix for TCP DNS
+                  b"\xaa\xaa"  # transaction ID
+                  b"\x01\x00"  # standard query
+                  b"\x00\x01"  # 1 question
+                  b"\x00\x00\x00\x00\x00\x00"  # no answer/authority/additional
+                  b"\x07version\x04bind\x00"    # version.bind
+                  b"\x00\x10"  # type TXT
+                  b"\x00\x03", # class CHAOS
+    # Chat / messaging
+    "irc":        b"NICK probe\r\nUSER probe 0 * :probe\r\n",
+    # VNC
+    "vnc":        b"",         # sends "RFB xxx.yyy" on connect
+    # Redis
+    "redis":      b"INFO server\r\n",
+    # HTTP proxies / alt ports
+    "http-alt":   b"HEAD / HTTP/1.0\r\nHost: localhost\r\n\r\n",
 }
 
 
@@ -196,7 +227,8 @@ def detect_service_version(ip: str, port: int, service_name: str, timeout: float
 
     Note: HTTPS (port 443) is not supported — a TLS handshake would be required.
     """
-    probe = _SERVICE_PROBES.get(service_name.lower(), b"\r\n")
+    svc = service_name.lower()
+    probe = _SERVICE_PROBES.get(svc, b"\r\n")
 
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
@@ -206,15 +238,65 @@ def detect_service_version(ip: str, port: int, service_name: str, timeout: float
             if probe:
                 sock.sendall(probe)
             data = sock.recv(1024)
+            if not data:
+                return ""
+
+            # MySQL: greeting packet contains version as null-terminated string starting at byte 5
+            if svc == "mysql":
+                try:
+                    raw = data[5:]
+                    version = raw[:raw.index(b"\x00")].decode(errors="ignore")
+                    return f"MySQL {version}" if version else ""
+                except (ValueError, IndexError):
+                    return ""
+
+            # DNS: parse TXT response for version.bind
+            if svc == "dns":
+                try:
+                    txt = data.decode(errors="ignore")
+                    # Look for version string in the response
+                    for candidate in re.findall(r"[\d]+\.[\d]+[.\w-]*", txt):
+                        return f"BIND {candidate}"
+                except Exception:
+                    pass
+                return ""
+
+            # VNC: sends "RFB xxx.yyy\n" on connect
+            if svc == "vnc":
+                txt = data.decode(errors="ignore").strip()
+                if txt.startswith("RFB"):
+                    return txt
+                return ""
+
+            # Redis: parse INFO server response
+            if svc == "redis":
+                txt = data.decode(errors="ignore")
+                for line in txt.splitlines():
+                    if line.startswith("redis_version:"):
+                        return f"Redis {line.split(':',1)[1].strip()}"
+                return ""
+
             response = data.decode(errors="ignore").strip()
             if not response:
                 return ""
-            # For HTTP: look for the "Server:" header which contains the web server name
-            if service_name.lower() in ("http", "https"):
+
+            # HTTP: look for the "Server:" header
+            if svc in ("http", "https", "http-alt"):
                 for line in response.splitlines():
                     if line.lower().startswith("server:"):
                         return line.split(":", 1)[1].strip()
-            # For SSH, FTP, SMTP and others: the first line contains the identification
+
+            # IRC: look for server version in welcome messages
+            if svc == "irc":
+                for line in response.splitlines():
+                    match = re.search(r"(unreal|inspircd|ircd)[^\s]*[\s/]*([\d.]+)", line, re.IGNORECASE)
+                    if match:
+                        return f"{match.group(1)}{match.group(2)}"
+                # Return first line as fallback
+                lines = response.splitlines()
+                return lines[0] if lines else ""
+
+            # SSH, FTP, SMTP, POP3, IMAP, Telnet and others: first line
             lines = response.splitlines()
             return lines[0] if lines else ""
     except (socket.timeout, OSError):

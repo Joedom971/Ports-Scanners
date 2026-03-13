@@ -40,7 +40,7 @@ SPEEDS = {
 # ── Scan profiles ──────────────────────────────────────────────────────────────
 # Maps each profile to a port specification (None = the user enters their own)
 PROFILES = {
-    "Quick scan    — common ports (web, SSH, remote desktop)": "22,80,443,3389,8080",
+    "Quick scan    — common ports (web, SSH, remote desktop)": "21,22,23,25,53,80,111,139,443,445,512,513,514,1099,1524,2049,2121,3306,3389,5432,5900,6000,6667,8009,8080,8180",
     "Standard scan — all reserved ports (1 to 1024)":          "1-1024",
     "Full scan     — all ports (1 to 65535, slow)":            "1-65535",
     "Custom        — I choose myself":                         None,
