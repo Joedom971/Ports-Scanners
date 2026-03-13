@@ -179,7 +179,7 @@ def _write_html(results: Dict[int, dict], path: Path, target: str, scan_type: st
                 safe_desc = html_lib.escape(v.get("description", ""), quote=True)
                 safe_id = html_lib.escape(v.get("id", ""))
                 cvss = v.get("cvss", 0)
-                badges.append(f'<span class="cve-badge" title="{safe_desc}">{safe_id} ({cvss})</span>')
+                badges.append(f'<span class="cve-badge">{safe_id} ({cvss})<span class="tooltip">{safe_desc}</span></span>')
             vulns_html = "<br>".join(badges)
 
         # The colour is applied as a transparent background (22 = 13% opacity in hexadecimal)
@@ -209,7 +209,10 @@ def _write_html(results: Dict[int, dict], path: Path, target: str, scan_type: st
   table {{ border-collapse: collapse; width: 100%; }}
   th {{ background: #16213e; padding: 8px 12px; text-align: left; }}
   td {{ padding: 6px 12px; border-bottom: 1px solid #333; vertical-align: top; }}
-  .cve-badge {{ display: inline-block; background: #ff4757; color: white; padding: 2px 6px; margin: 2px 0; border-radius: 3px; font-size: 0.85em; cursor: help; }}
+  .cve-badge {{ display: inline-block; background: #ff4757; color: white; padding: 2px 6px; margin: 2px 0; border-radius: 3px; font-size: 0.85em; cursor: help; position: relative; }}
+  .cve-badge .tooltip {{ visibility: hidden; opacity: 0; position: absolute; bottom: 125%; left: 0; min-width: 320px; max-width: 450px; background: #0f0f23; color: #eee; border: 1px solid #ff4757; border-radius: 6px; padding: 8px 10px; font-size: 0.82em; line-height: 1.4; z-index: 100; box-shadow: 0 4px 12px rgba(0,0,0,0.5); transition: opacity 0.15s; white-space: normal; }}
+  .cve-badge .tooltip::after {{ content: ""; position: absolute; top: 100%; left: 20px; border-width: 6px; border-style: solid; border-color: #ff4757 transparent transparent transparent; }}
+  .cve-badge:hover .tooltip {{ visibility: visible; opacity: 1; }}
 </style>
 </head>
 <body>
