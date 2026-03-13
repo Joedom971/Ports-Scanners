@@ -93,11 +93,11 @@ def main() -> int:
     # getattr with a lambda avoids an error on Windows where os.geteuid does not exist
     is_root = getattr(os, "geteuid", lambda: 1)() == 0
 
-    # Display the header with the automatically detected scan mode
+    # Display the header
     _print_safe("\n╔══════════════════════════════════════════════╗")
     _print_safe("║           Network Port Scanner               ║")
     if is_root:
-        _print_safe("║  Mode: SYN scan (advanced, root detected)    ║")
+        _print_safe("║  Root detected — SYN and connect available   ║")
     else:
         _print_safe("║  Mode: TCP connect (standard)                ║")
     _print_safe("╚══════════════════════════════════════════════╝")
@@ -108,6 +108,21 @@ def main() -> int:
     separator("Which machine do you want to scan?")
     print("  Examples: 192.168.1.1  |  myserver.local  |  192.168.1.0/24")
     target = ask("IP address or hostname", "127.0.0.1")
+
+    # ── 1b. Scan mode (root only) ────────────────────────────────────────────
+    if is_root:
+        separator("Scan mode")
+        scan_mode = choose(
+            "Choose a scan mode:",
+            [
+                "SYN scan   — stealthy, half-open (no full TCP connection)",
+                "TCP connect — full connection, enables all options (banner, CVE...)",
+            ],
+            default_idx=0,
+        )
+        use_syn = "SYN" in scan_mode
+    else:
+        use_syn = False
 
     # ── 2. Profile ────────────────────────────────────────────────────────────
     separator("What do you want to scan?")
@@ -135,7 +150,7 @@ def main() -> int:
     # ── 4. Extra options ──────────────────────────────────────────────────────
     separator("Additional options")
 
-    if is_root:
+    if use_syn:
         # In SYN scan mode, several options are automatically disabled to preserve stealth.
         # Each disabled option is explained so the user understands why it is unavailable.
         print("  SYN mode active — options incompatible with stealth disabled:\n")
@@ -174,17 +189,14 @@ def main() -> int:
                 "Search for vulnerabilities (CVE) on these versions (requires Internet)?",
                 default=False,
             )
-
-    # In SYN mode, firewall_detect was already set to False above.
-    # In TCP connect mode, ask the user — firewall-detect needs sudo.
-    if not is_root:
+        # Firewall detection requires scapy + sudo
         firewall_detect_asked = yes_no(
             "Detect firewall type (silent DROP vs active REJECT)?",
             default=False,
         )
-        if firewall_detect_asked:
+        if firewall_detect_asked and not is_root:
             print("  Note: --firewall-detect requires sudo (macOS/Linux) or admin (Windows).")
-        firewall_detect = False  # not root → can't use scapy anyway
+        firewall_detect = firewall_detect_asked and is_root
 
     os_detect_asked = yes_no(
         "Attempt to detect the target OS?",
@@ -222,8 +234,8 @@ def main() -> int:
         filename += ext
 
     # ── Summary ───────────────────────────────────────────────────────────────
-    # The scan type is determined automatically based on root privileges
-    scan_type_val = "syn" if is_root else "connect"
+    # The scan type depends on user choice (root) or defaults to connect
+    scan_type_val = "syn" if use_syn else "connect"
     threads   = perf["threads"]
     timeout   = perf["timeout"]
     delay     = perf["delay"]
@@ -234,7 +246,7 @@ def main() -> int:
     # In SYN scan mode, force stealth settings regardless of the chosen speed profile:
     #   - randomize: shuffles port order to avoid sequential scanning signatures (IDS)
     #   - jitter: adds random variation to inter-packet timing to break regular patterns
-    if is_root:
+    if use_syn:
         randomize = True
         jitter = max(jitter, 0.05)  # minimum 50ms jitter if not already set higher
 
@@ -250,7 +262,7 @@ def main() -> int:
     _print_safe(f"║  Ports       : {_trunc(ports):<31}║")
     _print_safe(f"║  Speed       : {_trunc(chosen_speed.split('(')[0].strip()):<31}║")
     _print_safe(f"║  Mode        : {scan_type_val:<31}║")
-    if not is_root:
+    if not use_syn:
         _print_safe(f"║  Discovery   : {'yes' if discover else 'no':<31}║")
         _print_safe(f"║  Svc info    : {'yes' if banner else 'no':<31}║")
         _print_safe(f"║  Svc version : {'yes' if version_detect else 'no':<31}║")
